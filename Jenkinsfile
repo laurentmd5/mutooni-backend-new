@@ -126,11 +126,15 @@ pipeline {
                         sh "sleep 10"
 
                         echo "Running tests against test database..."
+                        // --- COMMANDE CORRIGÉE ET COMPLÈTE ---
                         sh """
                             docker run --rm \
                             --link ${env.TEST_DB_CONTAINER_NAME}:db \
+                            
+                            // La destination est maintenant bien /app/core/firebase/...
                             -v \$(pwd)/mysite/core/firebase/serviceAccountKey.json:/app/core/firebase/serviceAccountKey.json \
                             
+                            // Arguments manquants précédemment
                             -e DB_NAME=mysite_test \
                             -e DB_USER=postgres \
                             -e DB_PASSWORD=postgres \
