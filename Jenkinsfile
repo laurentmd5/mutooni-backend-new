@@ -114,9 +114,7 @@ pipeline {
             steps {
                 echo 'Running Django unit tests with a temporary database...'
                 script {
-                    // 'try...finally' garantit que nous nettoyons le conteneur de BDD même si les tests échouent
                     try {
-                        // 1. Démarrer un conteneur Postgres de test
                         echo "Starting temporary test database: ${env.TEST_DB_CONTAINER_NAME}"
                         sh """
                             docker run -d --name ${env.TEST_DB_CONTAINER_NAME} \
@@ -125,18 +123,14 @@ pipeline {
                             -e POSTGRES_PASSWORD=postgres \
                             docker.io/library/postgres:13
                         """
-                        // Petit délai pour laisser Postgres démarrer
                         sh "sleep 10"
 
-                        // 2. Exécuter les tests en utilisant notre image
                         echo "Running tests against test database..."
-                        // Nous nous connectons au conteneur de BDD en utilisant --link
-                        // Nous surchargeons le CMD de l'image pour exécuter 'manage.py test'
-                        // Nous passons les variables d'environnement de BDD pour les tests
                         sh """
                             docker run --rm \
                             --link ${env.TEST_DB_CONTAINER_NAME}:db \
-                            -v \$(pwd)/mysite/core/firebase/serviceAccountKey.json:/app/mysite/core/firebase/serviceAccountKey.json \
+                            -v \$(pwd)/mysite/core/firebase/serviceAccountKey.json:/app/core/firebase/serviceAccountKey.json \
+                            
                             -e DB_NAME=mysite_test \
                             -e DB_USER=postgres \
                             -e DB_PASSWORD=postgres \
@@ -147,11 +141,9 @@ pipeline {
                         """
                         
                     } catch (e) {
-                        // Si les tests échouent, propager l'erreur
                         currentBuild.result = 'FAILURE'
                         throw e
                     } finally {
-                        // 3. Nettoyer le conteneur de BDD
                         echo "Stopping and removing test database..."
                         sh "docker stop ${env.TEST_DB_CONTAINER_NAME} || true"
                         sh "docker rm ${env.TEST_DB_CONTAINER_NAME} || true"
