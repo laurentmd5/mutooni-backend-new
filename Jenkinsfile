@@ -93,19 +93,17 @@ pipeline {
             steps {
                 echo "Scanning Docker image: ${env.TEST_IMAGE_TAG}"
                 script {
-                    // Nous scannons l'image que nous venons de pousser
-                    // 'trivy image' = scan d'image
-                    def trivyImageResult = sh(script: "docker run --rm aquasec/trivy image --exit-code 1 --severity CRITICAL --ignore-unfixed ${env.TEST_IMAGE_TAG}", returnStatus: true)
+                    // Scan des vulnérabilités critiques
+                    def trivyImageResult = sh(script: "docker run --rm -v \$(pwd):/scan aquasec/trivy image --exit-code 1 --severity CRITICAL --ignore-unfixed ${env.TEST_IMAGE_TAG}", returnStatus: true)
 
                     if (trivyImageResult != 0) {
-                        // En production, c'est un échec bloquant.
                         error "Trivy a trouvé des vulnérabilités CRITIQUES dans l'image Docker."
                     } else {
                         echo "Aucune vulnérabilité CRITIQUE trouvée dans l'image."
                     }
-                    
-                    // On peut aussi générer un rapport complet, même s'il n'y a pas de failles critiques
-                    sh "docker run --rm aquasec/trivy image --format json -o trivy_image_report.json ${env.TEST_IMAGE_TAG}"
+
+                    // Générer un rapport JSON dans le workspace Jenkins
+                    sh "docker run --rm -v \$(pwd):/scan aquasec/trivy image --format json -o /scan/trivy_image_report.json ${env.TEST_IMAGE_TAG}"
                     archiveArtifacts artifacts: 'trivy_image_report.json'
                 }
             }
