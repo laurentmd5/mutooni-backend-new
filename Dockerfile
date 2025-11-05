@@ -1,5 +1,5 @@
 # --- STAGE 1: Builder ---
-# Ce stage installe les outils de build et compile les dépendances
+# Ce stage installe les outils de build et compile les dépendances dans un venv
 FROM docker.io/library/python:3.11-slim AS builder
 
 # Set environment variables
@@ -12,13 +12,17 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+# Créer un environnement virtuel
+RUN python3 -m venv /opt/venv
 
-# Copier et installer les dépendances
+# Activer le venv pour les commandes suivantes n'est pas nécessaire
+# si nous appelons les exécutables directement.
+
+WORKDIR /app
 COPY requirements.txt .
-# Ceci installe les paquets dans /usr/local/lib/python3.11/site-packages
-# et les exécutables (comme gunicorn) dans /usr/local/bin
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Installer les dépendances DANS le venv
+RUN /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 
 # --- STAGE 2: Final ---
@@ -29,7 +33,7 @@ FROM docker.io/library/python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-# Installer UNIQUEMENT les dépendances système D'EXÉTION
+# Installer UNIQUEMENT les dépendances système D'EXÉCUTION
 RUN apt-get update && apt-get install -y \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
@@ -40,12 +44,8 @@ RUN groupadd -r appgroup && useradd -r -s /bin/false -g appgroup appuser
 
 WORKDIR /app
 
-# --- LA CORRECTION EST ICI ---
-# Copier les paquets Python installés depuis le builder
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-# Copier les exécutables (comme gunicorn) depuis le builder
-COPY --from=builder /usr/local/bin /usr/local/bin
-# --- FIN DE LA CORRECTION ---
+# Copier l'environnement virtuel complet depuis le builder
+COPY --from=builder /opt/venv /opt/venv
 
 # Copier le code source de l'application
 # Le .dockerignore empêchera serviceAccountKey.json d'être copié ici
@@ -57,7 +57,12 @@ RUN chown -R appuser:appgroup /app
 # Changer d'utilisateur pour ne plus être root
 USER appuser
 
+# --- CORRECTION FINALE ---
+# Ajouter le venv au PATH pour que 'python' et 'gunicorn' soient trouvés
+ENV PATH="/opt/venv/bin:$PATH"
+
 EXPOSE 8000
 
 # CMD :
+# 'python' et 'gunicorn' viendront maintenant du /opt/venv/bin
 CMD ["sh", "-c", "python manage.py migrate && gunicorn mysite.wsgi:application --bind 0.0.0.0:8000"]
