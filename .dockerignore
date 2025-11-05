@@ -30,3 +30,6 @@ Fichiers spécifiques au système d'exploitation
 
 .DS_Store
 Thumbs.db
+__pycache__/
+mysite/core/firebase/serviceAccountKey.json
+.env
