@@ -7,7 +7,7 @@ pipeline {
         GITHUB_CREDENTIALS_ID = 'my-token'
         IMAGE_NAME = "mon-app-django"
         DOCKER_REGISTRY = "docker.io/laurentmd5"
-        DOCKER_REGISTRY_CREDENTIALS_ID = 'docker-hub-credentials'
+        DOCKER_REGISTRY_CREDENTIALS_ID = 'docker-hub-creds'
         
         // --- NOUVELLES Variables pour l'Itération 3 (Tests) ---
         // Nom pour notre conteneur de BDD de test temporaire
