@@ -14,8 +14,10 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Installer les dépendances Python (ceci compile les roues)
+# Copier et installer les dépendances
 COPY requirements.txt .
+# Ceci installe les paquets dans /usr/local/lib/python3.11/site-packages
+# et les exécutables (comme gunicorn) dans /usr/local/bin
 RUN pip install --no-cache-dir -r requirements.txt
 
 
@@ -27,24 +29,26 @@ FROM docker.io/library/python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-# Installer UNIQUEMENT les dépendances système D'EXÉCUTION
-# (libpq-dev est nécessaire pour que psycopg2 s'exécute, pas seulement pour le build)
-# Note: On pourrait affiner en 'libpq5' mais 'libpq-dev' est plus sûr si vous n'êtes pas sûr.
+# Installer UNIQUEMENT les dépendances système D'EXÉTION
 RUN apt-get update && apt-get install -y \
-    libpq-dev \
+    libpq5 \
     && rm -rf /var/lib/apt/lists/*
+# Note: Remplacé libpq-dev par libpq5 (plus léger, juste le client runtime)
 
 # Créer l'utilisateur non-privilégié
-# -r = compte système, -s /bin/false = pas de shell, -g = créer un groupe
 RUN groupadd -r appgroup && useradd -r -s /bin/false -g appgroup appuser
 
-# Créer le répertoire de l'application
 WORKDIR /app
 
-# Copier les dépendances Python installées depuis le stage 'builder'
-COPY --from=builder /app /app
+# --- LA CORRECTION EST ICI ---
+# Copier les paquets Python installés depuis le builder
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+# Copier les exécutables (comme gunicorn) depuis le builder
+COPY --from=builder /usr/local/bin /usr/local/bin
+# --- FIN DE LA CORRECTION ---
 
 # Copier le code source de l'application
+# Le .dockerignore empêchera serviceAccountKey.json d'être copié ici
 COPY . .
 
 # Donner la propriété du répertoire à notre nouvel utilisateur
@@ -53,9 +57,7 @@ RUN chown -R appuser:appgroup /app
 # Changer d'utilisateur pour ne plus être root
 USER appuser
 
-# Exposer le port
 EXPOSE 8000
 
-# CMD : Nous gardons votre CMD pour l'instant, mais nous en avons parlé.
-# Idéalement, ceci devrait être UNIQUEMENT la commande gunicorn.
+# CMD :
 CMD ["sh", "-c", "python manage.py migrate && gunicorn mysite.wsgi:application --bind 0.0.0.0:8000"]
