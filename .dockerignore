@@ -1,0 +1,32 @@
+Fichier .dockerignore pour sécuriser et accélérer le build
+
+Ignorer le dossier .git
+
+.git
+.gitignore
+.dockerignore
+
+Ignorer les fichiers de l'environnement virtuel local
+
+.venv
+venv/
+
+Ignorer les fichiers de configuration CI/CD
+
+Jenkinsfile
+docker-compose.yml
+
+Ignorer les caches Python
+
+pycache/
+*.pyc
+
+Ignorer les fichiers de configuration d'IDE
+
+.vscode/
+.idea/
+
+Fichiers spécifiques au système d'exploitation
+
+.DS_Store
+Thumbs.db
