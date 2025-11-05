@@ -12,4 +12,4 @@ firebase/serviceAccountKey.json
 *.tar.gz
 *.zip
 db.sqlite3
-core/firebase/serviceAccountKey.json
+core/firebase/serviceAccountKey.jsoncore/firebase/serviceAccountKey.json
