@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  db:
+    image: docker.io/library/postgres:13
+    environment:
+      POSTGRES_DB: mysite
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - mysite_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: docker.io/library/mysite_backend:latest
+    environment:
+      ENV: dev
+      DB_NAME: mysite
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: db
+      DB_PORT: 5432
+    volumes:
+      - .:/app
+      - ./firebase/serviceAccountKey.json:/app/core/firebase/serviceAccountKey.json:ro  # Modifié ici  # Ajout spécifique
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
+volumes:
+  mysite_postgres_data:

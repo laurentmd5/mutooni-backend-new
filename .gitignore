@@ -1,0 +1,14 @@
+.venv
+__pycache__
+*.sqlite3
+.env
+*.log
+/staticfiles/
+/media/
+/.vscode/
+.env
+firebase/serviceAccountKey.json
+*.tar
+*.tar.gz
+*.zip
+db.sqlite3

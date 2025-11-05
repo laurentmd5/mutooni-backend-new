@@ -1,0 +1,2681 @@
+openapi: 3.0.3
+info:
+  title: Mutooni API
+  version: 1.0.0
+  description: Documentation de l'API Mutooni avec Swagger et ReDoc
+paths:
+  /achats/:
+    get:
+      operationId: achats_list
+      parameters:
+      - in: query
+        name: fournisseur
+        schema:
+          type: integer
+        description: Filtrer par ID fournisseur
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: statut
+        schema:
+          type: string
+        description: Filtrer par statut
+      tags:
+      - Achats
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Achat'
+          description: ''
+    post:
+      operationId: achats_create
+      tags:
+      - Achats
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AchatRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AchatRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AchatRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Achat'
+          description: ''
+  /achats/{id}/:
+    get:
+      operationId: achats_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this achat.
+        required: true
+      tags:
+      - Achats
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Achat'
+          description: ''
+    put:
+      operationId: achats_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this achat.
+        required: true
+      tags:
+      - Achats
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AchatRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AchatRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AchatRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Achat'
+          description: ''
+    patch:
+      operationId: achats_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this achat.
+        required: true
+      tags:
+      - Achats
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAchatRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAchatRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAchatRequest'
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Achat'
+          description: ''
+    delete:
+      operationId: achats_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this achat.
+        required: true
+      tags:
+      - Achats
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '204':
+          description: No response body
+  /auth/firebase/:
+    post:
+      operationId: auth_firebase_create
+      description: |-
+        Authentification via Firebase (id_token).
+        Retourne un JWT local.
+      summary: Connexion avec Firebase
+      tags:
+      - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FirebaseAuthRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FirebaseAuthRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FirebaseAuthRequestRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+          description: ''
+        '400':
+          description: id_token manquant
+        '401':
+          description: Token Firebase invalide
+  /categories/:
+    get:
+      operationId: categories_list
+      parameters:
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - categories
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CategorieProduit'
+          description: ''
+    post:
+      operationId: categories_create
+      tags:
+      - categories
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategorieProduitRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CategorieProduitRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CategorieProduitRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategorieProduit'
+          description: ''
+  /categories/{id}/:
+    get:
+      operationId: categories_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this categorie produit.
+        required: true
+      tags:
+      - categories
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategorieProduit'
+          description: ''
+    put:
+      operationId: categories_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this categorie produit.
+        required: true
+      tags:
+      - categories
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategorieProduitRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CategorieProduitRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CategorieProduitRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategorieProduit'
+          description: ''
+    patch:
+      operationId: categories_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this categorie produit.
+        required: true
+      tags:
+      - categories
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedCategorieProduitRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedCategorieProduitRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedCategorieProduitRequest'
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategorieProduit'
+          description: ''
+    delete:
+      operationId: categories_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this categorie produit.
+        required: true
+      tags:
+      - categories
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '204':
+          description: No response body
+  /clients/:
+    get:
+      operationId: clients_list
+      parameters:
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - clients
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Client'
+          description: ''
+    post:
+      operationId: clients_create
+      tags:
+      - clients
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClientRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ClientRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ClientRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Client'
+          description: ''
+  /clients/{id}/:
+    get:
+      operationId: clients_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this client.
+        required: true
+      tags:
+      - clients
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Client'
+          description: ''
+    put:
+      operationId: clients_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this client.
+        required: true
+      tags:
+      - clients
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClientRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ClientRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ClientRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Client'
+          description: ''
+    patch:
+      operationId: clients_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this client.
+        required: true
+      tags:
+      - clients
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedClientRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedClientRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedClientRequest'
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Client'
+          description: ''
+    delete:
+      operationId: clients_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this client.
+        required: true
+      tags:
+      - clients
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '204':
+          description: No response body
+  /dashboard-stats/:
+    get:
+      operationId: dashboard_stats_retrieve
+      description: Calcule et sérialise les statistiques pour le tableau de bord
+      tags:
+      - dashboard-stats
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStats'
+          description: ''
+  /employes/:
+    get:
+      operationId: employes_list
+      parameters:
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - employes
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Employe'
+          description: ''
+    post:
+      operationId: employes_create
+      tags:
+      - employes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EmployeRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EmployeRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Employe'
+          description: ''
+  /employes/{id}/:
+    get:
+      operationId: employes_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this employe.
+        required: true
+      tags:
+      - employes
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Employe'
+          description: ''
+    put:
+      operationId: employes_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this employe.
+        required: true
+      tags:
+      - employes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EmployeRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EmployeRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Employe'
+          description: ''
+    patch:
+      operationId: employes_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this employe.
+        required: true
+      tags:
+      - employes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedEmployeRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedEmployeRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedEmployeRequest'
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Employe'
+          description: ''
+    delete:
+      operationId: employes_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this employe.
+        required: true
+      tags:
+      - employes
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '204':
+          description: No response body
+  /fournisseurs/:
+    get:
+      operationId: fournisseurs_list
+      parameters:
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Filtrer par nom, téléphone ou email
+      tags:
+      - fournisseurs
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Fournisseur'
+          description: ''
+    post:
+      operationId: fournisseurs_create
+      tags:
+      - fournisseurs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FournisseurRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FournisseurRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FournisseurRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Fournisseur'
+          description: ''
+  /fournisseurs/{id}/:
+    get:
+      operationId: fournisseurs_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this fournisseur.
+        required: true
+      tags:
+      - fournisseurs
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Fournisseur'
+          description: ''
+    put:
+      operationId: fournisseurs_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this fournisseur.
+        required: true
+      tags:
+      - fournisseurs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FournisseurRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FournisseurRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FournisseurRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Fournisseur'
+          description: ''
+    patch:
+      operationId: fournisseurs_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this fournisseur.
+        required: true
+      tags:
+      - fournisseurs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedFournisseurRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedFournisseurRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedFournisseurRequest'
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Fournisseur'
+          description: ''
+    delete:
+      operationId: fournisseurs_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this fournisseur.
+        required: true
+      tags:
+      - fournisseurs
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '204':
+          description: No response body
+  /mouvements/:
+    get:
+      operationId: mouvements_list
+      parameters:
+      - in: query
+        name: date
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: produit
+        schema:
+          type: integer
+      - in: query
+        name: type
+        schema:
+          type: string
+          enum:
+          - ENTREE
+          - SORTIE
+        description: |-
+          * `ENTREE` - Entrée
+          * `SORTIE` - Sortie
+      tags:
+      - mouvements
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MouvementStock'
+          description: ''
+  /mouvements/{id}/:
+    get:
+      operationId: mouvements_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this mouvement stock.
+        required: true
+      tags:
+      - mouvements
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MouvementStock'
+          description: ''
+  /ping/:
+    get:
+      operationId: ping_retrieve
+      description: Renvoie « pong » afin de confirmer que l'API Mutooni est opérationnelle.
+      summary: Test de disponibilité de l'API
+      tags:
+      - Debug
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      - {}
+      responses:
+        '200':
+          description: Pong!
+  /produits/:
+    get:
+      operationId: produits_list
+      parameters:
+      - in: query
+        name: categorie
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - produits
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Produit'
+          description: ''
+    post:
+      operationId: produits_create
+      tags:
+      - produits
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProduitRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ProduitRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProduitRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Produit'
+          description: ''
+  /produits/{id}/:
+    get:
+      operationId: produits_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this produit.
+        required: true
+      tags:
+      - produits
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Produit'
+          description: ''
+    put:
+      operationId: produits_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this produit.
+        required: true
+      tags:
+      - produits
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProduitRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ProduitRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProduitRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Produit'
+          description: ''
+    patch:
+      operationId: produits_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this produit.
+        required: true
+      tags:
+      - produits
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedProduitRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedProduitRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedProduitRequest'
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Produit'
+          description: ''
+    delete:
+      operationId: produits_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this produit.
+        required: true
+      tags:
+      - produits
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '204':
+          description: No response body
+  /salaires/:
+    get:
+      operationId: salaires_list
+      parameters:
+      - in: query
+        name: employe
+        schema:
+          type: integer
+      - in: query
+        name: periode
+        schema:
+          type: string
+      tags:
+      - salaires
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Salaire'
+          description: ''
+    post:
+      operationId: salaires_create
+      tags:
+      - salaires
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SalaireRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SalaireRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SalaireRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Salaire'
+          description: ''
+  /salaires/{id}/:
+    get:
+      operationId: salaires_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this salaire.
+        required: true
+      tags:
+      - salaires
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Salaire'
+          description: ''
+    put:
+      operationId: salaires_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this salaire.
+        required: true
+      tags:
+      - salaires
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SalaireRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SalaireRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SalaireRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Salaire'
+          description: ''
+    patch:
+      operationId: salaires_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this salaire.
+        required: true
+      tags:
+      - salaires
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedSalaireRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedSalaireRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedSalaireRequest'
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Salaire'
+          description: ''
+    delete:
+      operationId: salaires_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this salaire.
+        required: true
+      tags:
+      - salaires
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '204':
+          description: No response body
+  /transactions/:
+    get:
+      operationId: transactions_list
+      parameters:
+      - in: query
+        name: date
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: module
+        schema:
+          type: string
+      - in: query
+        name: type
+        schema:
+          type: string
+          enum:
+          - DEPENSE
+          - RECETTE
+        description: |-
+          * `RECETTE` - Recette
+          * `DEPENSE` - Dépense
+      tags:
+      - transactions
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Transaction'
+          description: ''
+  /transactions/{id}/:
+    get:
+      operationId: transactions_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this transaction.
+        required: true
+      tags:
+      - transactions
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+          description: ''
+  /users/:
+    get:
+      operationId: users_list
+      description: |-
+        CRUD complet sur le modèle User.
+
+        - LIST & CREATE : réservés aux administrateurs (IsAdmin).
+        - RETRIEVE / UPDATE / PARTIAL_UPDATE / DESTROY :
+          l'utilisateur peut accéder/éditer *uniquement* son propre profil.
+      parameters:
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - users
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+          description: ''
+    post:
+      operationId: users_create
+      description: |-
+        CRUD complet sur le modèle User.
+
+        - LIST & CREATE : réservés aux administrateurs (IsAdmin).
+        - RETRIEVE / UPDATE / PARTIAL_UPDATE / DESTROY :
+          l'utilisateur peut accéder/éditer *uniquement* son propre profil.
+      tags:
+      - users
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+  /users/{id}/:
+    get:
+      operationId: users_retrieve
+      description: |-
+        CRUD complet sur le modèle User.
+
+        - LIST & CREATE : réservés aux administrateurs (IsAdmin).
+        - RETRIEVE / UPDATE / PARTIAL_UPDATE / DESTROY :
+          l'utilisateur peut accéder/éditer *uniquement* son propre profil.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Utilisateur.
+        required: true
+      tags:
+      - users
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+    put:
+      operationId: users_update
+      description: |-
+        CRUD complet sur le modèle User.
+
+        - LIST & CREATE : réservés aux administrateurs (IsAdmin).
+        - RETRIEVE / UPDATE / PARTIAL_UPDATE / DESTROY :
+          l'utilisateur peut accéder/éditer *uniquement* son propre profil.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Utilisateur.
+        required: true
+      tags:
+      - users
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+    patch:
+      operationId: users_partial_update
+      description: |-
+        CRUD complet sur le modèle User.
+
+        - LIST & CREATE : réservés aux administrateurs (IsAdmin).
+        - RETRIEVE / UPDATE / PARTIAL_UPDATE / DESTROY :
+          l'utilisateur peut accéder/éditer *uniquement* son propre profil.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Utilisateur.
+        required: true
+      tags:
+      - users
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedUserRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedUserRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedUserRequest'
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+    delete:
+      operationId: users_destroy
+      description: |-
+        CRUD complet sur le modèle User.
+
+        - LIST & CREATE : réservés aux administrateurs (IsAdmin).
+        - RETRIEVE / UPDATE / PARTIAL_UPDATE / DESTROY :
+          l'utilisateur peut accéder/éditer *uniquement* son propre profil.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Utilisateur.
+        required: true
+      tags:
+      - users
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '204':
+          description: No response body
+  /ventes/:
+    get:
+      operationId: ventes_list
+      parameters:
+      - in: query
+        name: client
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: statut
+        schema:
+          type: string
+          enum:
+          - ANNULEE
+          - EN_COURS
+          - PAYEE
+        description: |-
+          * `EN_COURS` - En cours
+          * `PAYEE` - Payée
+          * `ANNULEE` - Annulée
+      tags:
+      - ventes
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Vente'
+          description: ''
+    post:
+      operationId: ventes_create
+      tags:
+      - ventes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VenteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/VenteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VenteRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vente'
+          description: ''
+  /ventes/{id}/:
+    get:
+      operationId: ventes_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this vente.
+        required: true
+      tags:
+      - ventes
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vente'
+          description: ''
+    put:
+      operationId: ventes_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this vente.
+        required: true
+      tags:
+      - ventes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VenteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/VenteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VenteRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vente'
+          description: ''
+    patch:
+      operationId: ventes_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this vente.
+        required: true
+      tags:
+      - ventes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedVenteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedVenteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedVenteRequest'
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vente'
+          description: ''
+    delete:
+      operationId: ventes_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this vente.
+        required: true
+      tags:
+      - ventes
+      security:
+      - cookieAuth: []
+      - jwtAuth: []
+      - FirebaseAuth: []
+      responses:
+        '204':
+          description: No response body
+components:
+  schemas:
+    Achat:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        fournisseur:
+          type: string
+          readOnly: true
+        lignes:
+          type: array
+          items:
+            $ref: '#/components/schemas/LigneAchat'
+        date:
+          type: string
+          format: date-time
+          readOnly: true
+        total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        montant_paye:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        statut:
+          $ref: '#/components/schemas/AchatStatutEnum'
+      required:
+      - date
+      - fournisseur
+      - id
+      - lignes
+      - total
+    AchatRequest:
+      type: object
+      properties:
+        fournisseur_id:
+          type: integer
+          writeOnly: true
+        lignes:
+          type: array
+          items:
+            $ref: '#/components/schemas/LigneAchatRequest'
+        total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        montant_paye:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        statut:
+          $ref: '#/components/schemas/AchatStatutEnum'
+      required:
+      - fournisseur_id
+      - lignes
+      - total
+    AchatStatutEnum:
+      enum:
+      - EN_ATTENTE
+      - PAYE
+      - PARTIEL
+      - ANNULE
+      type: string
+      description: |-
+        * `EN_ATTENTE` - En attente
+        * `PAYE` - Payé
+        * `PARTIEL` - Partiellement payé
+        * `ANNULE` - Annulé
+    CategorieProduit:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        nom:
+          type: string
+          maxLength: 100
+      required:
+      - id
+      - nom
+    CategorieProduitRequest:
+      type: object
+      properties:
+        nom:
+          type: string
+          minLength: 1
+          maxLength: 100
+      required:
+      - nom
+    Client:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        nom:
+          type: string
+          maxLength: 120
+        telephone:
+          type: string
+          maxLength: 30
+        email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        adresse:
+          type: string
+        solde:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+      required:
+      - id
+      - nom
+    ClientRequest:
+      type: object
+      properties:
+        nom:
+          type: string
+          minLength: 1
+          maxLength: 120
+        telephone:
+          type: string
+          maxLength: 30
+        email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        adresse:
+          type: string
+        solde:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+      required:
+      - nom
+    DashboardStats:
+      type: object
+      description: Sérialiseur pour les statistiques du tableau de bord.
+      properties:
+        total_vente:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          description: Total des ventes pour le mois en cours
+        total_achat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          description: Total des achats pour le mois en cours
+        total_stock:
+          type: integer
+          description: Nombre total d'articles en stock
+      required:
+      - total_achat
+      - total_stock
+      - total_vente
+    Employe:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        nom:
+          type: string
+          maxLength: 120
+        poste:
+          type: string
+          maxLength: 80
+        salaire_base:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        date_embauche:
+          type: string
+          format: date
+        actif:
+          type: boolean
+      required:
+      - date_embauche
+      - id
+      - nom
+      - poste
+      - salaire_base
+    EmployeRequest:
+      type: object
+      properties:
+        nom:
+          type: string
+          minLength: 1
+          maxLength: 120
+        poste:
+          type: string
+          minLength: 1
+          maxLength: 80
+        salaire_base:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        date_embauche:
+          type: string
+          format: date
+        actif:
+          type: boolean
+      required:
+      - date_embauche
+      - nom
+      - poste
+      - salaire_base
+    FirebaseAuthRequestRequest:
+      type: object
+      properties:
+        id_token:
+          type: string
+          minLength: 1
+          description: ID‑token retourné par Firebase Auth
+      required:
+      - id_token
+    Fournisseur:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        nom:
+          type: string
+          maxLength: 120
+        telephone:
+          type: string
+          maxLength: 30
+        email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        adresse:
+          type: string
+        solde:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+      required:
+      - id
+      - nom
+    FournisseurRequest:
+      type: object
+      properties:
+        nom:
+          type: string
+          minLength: 1
+          maxLength: 120
+        telephone:
+          type: string
+          maxLength: 30
+        email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        adresse:
+          type: string
+        solde:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+      required:
+      - nom
+    LigneAchat:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        produit:
+          type: string
+          readOnly: true
+        quantite:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        prix_unitaire:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        achat:
+          type: integer
+      required:
+      - achat
+      - id
+      - prix_unitaire
+      - produit
+      - quantite
+    LigneAchatRequest:
+      type: object
+      properties:
+        produit_id:
+          type: integer
+          writeOnly: true
+        quantite:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        prix_unitaire:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        achat:
+          type: integer
+      required:
+      - achat
+      - prix_unitaire
+      - produit_id
+      - quantite
+    LigneVente:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        produit:
+          type: string
+          readOnly: true
+        quantite:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        prix_unitaire:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        remise:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        vente:
+          type: integer
+      required:
+      - id
+      - prix_unitaire
+      - produit
+      - quantite
+      - vente
+    LigneVenteRequest:
+      type: object
+      properties:
+        produit_id:
+          type: integer
+          writeOnly: true
+        quantite:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        prix_unitaire:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        remise:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        vente:
+          type: integer
+      required:
+      - prix_unitaire
+      - produit_id
+      - quantite
+      - vente
+    MouvementStock:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        produit:
+          type: string
+          readOnly: true
+        date:
+          type: string
+          format: date-time
+          readOnly: true
+        type:
+          $ref: '#/components/schemas/MouvementStockTypeEnum'
+        quantite:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        source_type:
+          type: string
+          maxLength: 30
+        source_id:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          nullable: true
+      required:
+      - date
+      - id
+      - produit
+      - quantite
+      - type
+    MouvementStockTypeEnum:
+      enum:
+      - ENTREE
+      - SORTIE
+      type: string
+      description: |-
+        * `ENTREE` - Entrée
+        * `SORTIE` - Sortie
+    PatchedAchatRequest:
+      type: object
+      properties:
+        fournisseur_id:
+          type: integer
+          writeOnly: true
+        lignes:
+          type: array
+          items:
+            $ref: '#/components/schemas/LigneAchatRequest'
+        total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        montant_paye:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        statut:
+          $ref: '#/components/schemas/AchatStatutEnum'
+    PatchedCategorieProduitRequest:
+      type: object
+      properties:
+        nom:
+          type: string
+          minLength: 1
+          maxLength: 100
+    PatchedClientRequest:
+      type: object
+      properties:
+        nom:
+          type: string
+          minLength: 1
+          maxLength: 120
+        telephone:
+          type: string
+          maxLength: 30
+        email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        adresse:
+          type: string
+        solde:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+    PatchedEmployeRequest:
+      type: object
+      properties:
+        nom:
+          type: string
+          minLength: 1
+          maxLength: 120
+        poste:
+          type: string
+          minLength: 1
+          maxLength: 80
+        salaire_base:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        date_embauche:
+          type: string
+          format: date
+        actif:
+          type: boolean
+    PatchedFournisseurRequest:
+      type: object
+      properties:
+        nom:
+          type: string
+          minLength: 1
+          maxLength: 120
+        telephone:
+          type: string
+          maxLength: 30
+        email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        adresse:
+          type: string
+        solde:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+    PatchedProduitRequest:
+      type: object
+      properties:
+        categorie_id:
+          type: integer
+          writeOnly: true
+        nom:
+          type: string
+          minLength: 1
+          maxLength: 150
+        unite:
+          type: string
+          minLength: 1
+          maxLength: 20
+        prix_unitaire:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        seuil_min:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        stock_actuel:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+    PatchedSalaireRequest:
+      type: object
+      properties:
+        employe_id:
+          type: integer
+          writeOnly: true
+        periode:
+          type: string
+          minLength: 1
+          maxLength: 20
+        brut:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        net:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        montant_paye:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+    PatchedUserRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 1
+          title: Nom d’utilisateur
+          description: Requis. 150 caractères maximum. Uniquement des lettres, nombres
+            et les caractères « @ », « . », « + », « - » et « _ ».
+          pattern: ^[\w.@+-]+$
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          title: Adresse électronique
+          maxLength: 254
+        first_name:
+          type: string
+          title: Prénom
+          maxLength: 150
+        last_name:
+          type: string
+          title: Nom
+          maxLength: 150
+        role:
+          allOf:
+          - $ref: '#/components/schemas/RoleEnum'
+          description: |-
+            Rôle métier de l'utilisateur
+
+            * `admin` - Admin
+            * `vendor` - Vendor
+            * `staff` - Staff
+    PatchedVenteRequest:
+      type: object
+      properties:
+        client_id:
+          type: integer
+          writeOnly: true
+        lignes:
+          type: array
+          items:
+            $ref: '#/components/schemas/LigneVenteRequest'
+        total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        montant_paye:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        mode_paiement:
+          type: string
+          maxLength: 50
+        statut:
+          $ref: '#/components/schemas/VenteStatutEnum'
+    Produit:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        categorie:
+          allOf:
+          - $ref: '#/components/schemas/CategorieProduit'
+          readOnly: true
+        nom:
+          type: string
+          maxLength: 150
+        unite:
+          type: string
+          maxLength: 20
+        prix_unitaire:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        seuil_min:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        stock_actuel:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+      required:
+      - categorie
+      - id
+      - nom
+      - prix_unitaire
+      - unite
+    ProduitRequest:
+      type: object
+      properties:
+        categorie_id:
+          type: integer
+          writeOnly: true
+        nom:
+          type: string
+          minLength: 1
+          maxLength: 150
+        unite:
+          type: string
+          minLength: 1
+          maxLength: 20
+        prix_unitaire:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        seuil_min:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        stock_actuel:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+      required:
+      - categorie_id
+      - nom
+      - prix_unitaire
+      - unite
+    RoleEnum:
+      enum:
+      - admin
+      - vendor
+      - staff
+      type: string
+      description: |-
+        * `admin` - Admin
+        * `vendor` - Vendor
+        * `staff` - Staff
+    Salaire:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employe:
+          type: string
+          readOnly: true
+        periode:
+          type: string
+          maxLength: 20
+        brut:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        net:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        montant_paye:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        date_paiement:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - brut
+      - date_paiement
+      - employe
+      - id
+      - montant_paye
+      - net
+      - periode
+    SalaireRequest:
+      type: object
+      properties:
+        employe_id:
+          type: integer
+          writeOnly: true
+        periode:
+          type: string
+          minLength: 1
+          maxLength: 20
+        brut:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        net:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        montant_paye:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      required:
+      - brut
+      - employe_id
+      - montant_paye
+      - net
+      - periode
+    TokenPair:
+      type: object
+      properties:
+        access:
+          type: string
+          description: JWT d'accès (SimpleJWT)
+        refresh:
+          type: string
+          description: JWT de rafraîchissement
+      required:
+      - access
+      - refresh
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        date:
+          type: string
+          format: date-time
+          readOnly: true
+        type:
+          $ref: '#/components/schemas/TransactionTypeEnum'
+        module:
+          type: string
+          maxLength: 50
+        reference_id:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        montant:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        description:
+          type: string
+      required:
+      - date
+      - id
+      - module
+      - montant
+      - reference_id
+      - type
+    TransactionTypeEnum:
+      enum:
+      - RECETTE
+      - DEPENSE
+      type: string
+      description: |-
+        * `RECETTE` - Recette
+        * `DEPENSE` - Dépense
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          title: Nom d’utilisateur
+          description: Requis. 150 caractères maximum. Uniquement des lettres, nombres
+            et les caractères « @ », « . », « + », « - » et « _ ».
+          pattern: ^[\w.@+-]+$
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          title: Adresse électronique
+          maxLength: 254
+        first_name:
+          type: string
+          title: Prénom
+          maxLength: 150
+        last_name:
+          type: string
+          title: Nom
+          maxLength: 150
+        role:
+          allOf:
+          - $ref: '#/components/schemas/RoleEnum'
+          description: |-
+            Rôle métier de l'utilisateur
+
+            * `admin` - Admin
+            * `vendor` - Vendor
+            * `staff` - Staff
+        is_active:
+          type: boolean
+          readOnly: true
+          title: Actif
+          description: Précise si l’utilisateur doit être considéré comme actif. Décochez
+            ceci plutôt que de supprimer le compte.
+        date_joined:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Date d’inscription
+      required:
+      - date_joined
+      - id
+      - is_active
+      - username
+    UserRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 1
+          title: Nom d’utilisateur
+          description: Requis. 150 caractères maximum. Uniquement des lettres, nombres
+            et les caractères « @ », « . », « + », « - » et « _ ».
+          pattern: ^[\w.@+-]+$
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          title: Adresse électronique
+          maxLength: 254
+        first_name:
+          type: string
+          title: Prénom
+          maxLength: 150
+        last_name:
+          type: string
+          title: Nom
+          maxLength: 150
+        role:
+          allOf:
+          - $ref: '#/components/schemas/RoleEnum'
+          description: |-
+            Rôle métier de l'utilisateur
+
+            * `admin` - Admin
+            * `vendor` - Vendor
+            * `staff` - Staff
+      required:
+      - username
+    Vente:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        client:
+          type: string
+          readOnly: true
+        lignes:
+          type: array
+          items:
+            $ref: '#/components/schemas/LigneVente'
+        date:
+          type: string
+          format: date-time
+          readOnly: true
+        total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        montant_paye:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        mode_paiement:
+          type: string
+          maxLength: 50
+        statut:
+          $ref: '#/components/schemas/VenteStatutEnum'
+      required:
+      - client
+      - date
+      - id
+      - lignes
+      - total
+    VenteRequest:
+      type: object
+      properties:
+        client_id:
+          type: integer
+          writeOnly: true
+        lignes:
+          type: array
+          items:
+            $ref: '#/components/schemas/LigneVenteRequest'
+        total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        montant_paye:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        mode_paiement:
+          type: string
+          maxLength: 50
+        statut:
+          $ref: '#/components/schemas/VenteStatutEnum'
+      required:
+      - client_id
+      - lignes
+      - total
+    VenteStatutEnum:
+      enum:
+      - EN_COURS
+      - PAYEE
+      - ANNULEE
+      type: string
+      description: |-
+        * `EN_COURS` - En cours
+        * `PAYEE` - Payée
+        * `ANNULEE` - Annulée
+  securitySchemes:
+    FirebaseAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
