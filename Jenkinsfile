@@ -36,6 +36,7 @@ pipeline {
                     sh '''
                         mkdir -p mysite/core/firebase
                         cp "$FIREBASE_KEY" mysite/core/firebase/serviceAccountKey.json
+                        chmod 644 mysite/core/firebase/serviceAccountKey.json
                     '''
                 }
             }
@@ -124,6 +125,9 @@ pipeline {
                             docker.io/library/postgres:13
                         """
                         sh "sleep 10"
+
+                        echo "Setting correct permissions on Firebase key..."
+                        sh 'chmod 644 mysite/core/firebase/serviceAccountKey.json'
 
                         echo "Running tests against test database..."
                         sh """
