@@ -70,19 +70,38 @@ pipeline {
                                     PYTHON_CMD="python"
                                 else
                                     echo "❌ Aucun Python trouvé - installation de Python3"
-                                    apt-get update && apt-get install -y python3 python3-venv
+                                    apt-get update && apt-get install -y python3 python3-pip
                                     PYTHON_CMD="python3"
                                 fi
                                 
-                                # Créer le venv avec la commande détectée
-                                $PYTHON_CMD -m venv venv-lint
-                                venv-lint/bin/pip install --upgrade pip
-                                venv-lint/bin/pip install flake8 flake8-html
+                                # Essayer de créer l'environnement virtuel, sinon utiliser l'installation système
+                                if $PYTHON_CMD -c "import venv" 2>/dev/null; then
+                                    echo "✅ Création de l'environnement virtuel..."
+                                    $PYTHON_CMD -m venv venv-lint
+                                    PIP_CMD="venv-lint/bin/pip"
+                                    FLAKE8_CMD="venv-lint/bin/flake8"
+                                else
+                                    echo "⚠️ Module venv non disponible - utilisation de l'installation système"
+                                    PIP_CMD="pip3"
+                                    FLAKE8_CMD="flake8"
+                                    # Installer flake8 directement
+                                    $PIP_CMD install --user flake8 flake8-html
+                                fi
+                                
+                                # Installer/upgrade les packages
+                                $PIP_CMD install --upgrade pip --quiet
+                                $PIP_CMD install flake8 flake8-html --quiet
                             '''
                             
                             echo '📏 Running Flake8 - Critical Errors (E9, F63, F7, F82)...'
                             def flake8Critical = sh(
-                                script: 'venv-lint/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics',
+                                script: '''
+                                    if command -v venv-lint/bin/flake8 >/dev/null 2>&1; then
+                                        venv-lint/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+                                    else
+                                        python3 -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+                                    fi
+                                ''',
                                 returnStatus: true
                             )
                             
@@ -95,18 +114,29 @@ pipeline {
                             
                             echo '📊 Running Flake8 - Quality Checks...'
                             sh '''
-                                venv-lint/bin/flake8 . \
-                                    --count \
-                                    --exit-zero \
-                                    --max-complexity=10 \
-                                    --max-line-length=120 \
-                                    --statistics \
-                                    --format=html \
-                                    --htmldir=flake8-report
+                                if command -v venv-lint/bin/flake8 >/dev/null 2>&1; then
+                                    venv-lint/bin/flake8 . \
+                                        --count \
+                                        --exit-zero \
+                                        --max-complexity=10 \
+                                        --max-line-length=120 \
+                                        --statistics \
+                                        --format=html \
+                                        --htmldir=flake8-report
+                                else
+                                    python3 -m flake8 . \
+                                        --count \
+                                        --exit-zero \
+                                        --max-complexity=10 \
+                                        --max-line-length=120 \
+                                        --statistics \
+                                        --format=html \
+                                        --htmldir=flake8-report
+                                fi
                             '''
                             
                             archiveArtifacts artifacts: 'flake8-report/**', allowEmptyArchive: true
-                            sh 'rm -rf venv-lint'
+                            sh 'rm -rf venv-lint 2>/dev/null || true'
                             echo '✅ Linting completed'
                         }
                     }
@@ -127,24 +157,52 @@ pipeline {
                                     PYTHON_CMD="python"
                                 else
                                     echo "❌ Aucun Python trouvé - installation de Python3"
-                                    apt-get update && apt-get install -y python3 python3-venv
+                                    apt-get update && apt-get install -y python3 python3-pip
                                     PYTHON_CMD="python3"
                                 fi
                                 
-                                # Créer le venv avec la commande détectée
-                                $PYTHON_CMD -m venv venv-tools
-                                venv-tools/bin/pip install --upgrade pip
-                                venv-tools/bin/pip install bandit semgrep
+                                # Essayer de créer l'environnement virtuel, sinon utiliser l'installation système
+                                if $PYTHON_CMD -c "import venv" 2>/dev/null; then
+                                    echo "✅ Création de l'environnement virtuel..."
+                                    $PYTHON_CMD -m venv venv-tools
+                                    PIP_CMD="venv-tools/bin/pip"
+                                    BANDIT_CMD="venv-tools/bin/bandit"
+                                    SEMGREP_CMD="venv-tools/bin/semgrep"
+                                else
+                                    echo "⚠️ Module venv non disponible - utilisation de l'installation système"
+                                    PIP_CMD="pip3"
+                                    BANDIT_CMD="bandit"
+                                    SEMGREP_CMD="semgrep"
+                                    # Installer directement
+                                    $PIP_CMD install --user bandit semgrep
+                                fi
+                                
+                                # Installer/upgrade les packages
+                                $PIP_CMD install --upgrade pip --quiet
+                                $PIP_CMD install bandit semgrep --quiet
                             '''
                             
                             echo '🔍 Running Bandit...'
-                            sh 'venv-tools/bin/bandit -r . -o bandit_report.json -f json --exit-zero'
-                            sh 'venv-tools/bin/bandit -r . -o bandit_report.html -f html --exit-zero'
+                            sh '''
+                                if command -v venv-tools/bin/bandit >/dev/null 2>&1; then
+                                    venv-tools/bin/bandit -r . -o bandit_report.json -f json --exit-zero
+                                    venv-tools/bin/bandit -r . -o bandit_report.html -f html --exit-zero
+                                else
+                                    python3 -m bandit -r . -o bandit_report.json -f json --exit-zero
+                                    python3 -m bandit -r . -o bandit_report.html -f html --exit-zero
+                                fi
+                            '''
                             archiveArtifacts artifacts: 'bandit_report.*'
                             
                             echo '🔍 Running Semgrep...'
                             def semgrepResult = sh(
-                                script: 'venv-tools/bin/semgrep --config="p/python" --config="p/django" --json -o semgrep_report.json . --error',
+                                script: '''
+                                    if command -v venv-tools/bin/semgrep >/dev/null 2>&1; then
+                                        venv-tools/bin/semgrep --config="p/python" --config="p/django" --json -o semgrep_report.json . --error
+                                    else
+                                        python3 -m semgrep --config="p/python" --config="p/django" --json -o semgrep_report.json . --error
+                                    fi
+                                ''',
                                 returnStatus: true
                             )
                             
@@ -157,7 +215,7 @@ pipeline {
                                 echo '✅ Aucun problème de sécurité détecté'
                             }
                             
-                            sh 'rm -rf venv-tools'
+                            sh 'rm -rf venv-tools 2>/dev/null || true'
                         }
                     }
                 }
