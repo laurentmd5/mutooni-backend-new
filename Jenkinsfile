@@ -19,8 +19,6 @@ pipeline {
         skipDefaultCheckout()
         timestamps()
         timeout(time: 1, unit: 'HOURS')
-        ansiColor('xterm')
-        maskPasswords()
     }
 
     stages {
