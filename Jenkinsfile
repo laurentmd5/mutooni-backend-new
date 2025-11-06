@@ -60,14 +60,29 @@ pipeline {
                         echo '🔍 Checking code style with flake8...'
                         script {
                             sh '''
-                                python3 -m venv venv-lint
+                                # Vérifier d'abord si Python est disponible
+                                echo "🔍 Vérification de l'environnement Python..."
+                                if command -v python3 >/dev/null 2>&1; then
+                                    echo "✅ Python3 trouvé"
+                                    PYTHON_CMD="python3"
+                                elif command -v python >/dev/null 2>&1; then
+                                    echo "✅ Python trouvé (version standard)"
+                                    PYTHON_CMD="python"
+                                else
+                                    echo "❌ Aucun Python trouvé - installation de Python3"
+                                    apt-get update && apt-get install -y python3 python3-venv
+                                    PYTHON_CMD="python3"
+                                fi
+                                
+                                # Créer le venv avec la commande détectée
+                                $PYTHON_CMD -m venv venv-lint
                                 venv-lint/bin/pip install --upgrade pip
                                 venv-lint/bin/pip install flake8 flake8-html
                             '''
                             
                             echo '📏 Running Flake8 - Critical Errors (E9, F63, F7, F82)...'
                             def flake8Critical = sh(
-                                script: 'venv-lint/bin/flake8 mysite --count --select=E9,F63,F7,F82 --show-source --statistics',
+                                script: 'venv-lint/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics',
                                 returnStatus: true
                             )
                             
@@ -80,7 +95,7 @@ pipeline {
                             
                             echo '📊 Running Flake8 - Quality Checks...'
                             sh '''
-                                venv-lint/bin/flake8 mysite \
+                                venv-lint/bin/flake8 . \
                                     --count \
                                     --exit-zero \
                                     --max-complexity=10 \
@@ -101,18 +116,35 @@ pipeline {
                     steps {
                         echo '🛡️  Running SAST with Bandit and Semgrep...'
                         script {
-                            sh 'python3 -m venv venv-tools'
-                            sh 'venv-tools/bin/pip install --upgrade pip'
-                            sh 'venv-tools/bin/pip install bandit semgrep'
+                            sh '''
+                                # Vérifier d'abord si Python est disponible
+                                echo "🔍 Vérification de l'environnement Python..."
+                                if command -v python3 >/dev/null 2>&1; then
+                                    echo "✅ Python3 trouvé"
+                                    PYTHON_CMD="python3"
+                                elif command -v python >/dev/null 2>&1; then
+                                    echo "✅ Python trouvé (version standard)"
+                                    PYTHON_CMD="python"
+                                else
+                                    echo "❌ Aucun Python trouvé - installation de Python3"
+                                    apt-get update && apt-get install -y python3 python3-venv
+                                    PYTHON_CMD="python3"
+                                fi
+                                
+                                # Créer le venv avec la commande détectée
+                                $PYTHON_CMD -m venv venv-tools
+                                venv-tools/bin/pip install --upgrade pip
+                                venv-tools/bin/pip install bandit semgrep
+                            '''
                             
                             echo '🔍 Running Bandit...'
-                            sh 'venv-tools/bin/bandit -r mysite -o bandit_report.json -f json --exit-zero'
-                            sh 'venv-tools/bin/bandit -r mysite -o bandit_report.html -f html --exit-zero'
+                            sh 'venv-tools/bin/bandit -r . -o bandit_report.json -f json --exit-zero'
+                            sh 'venv-tools/bin/bandit -r . -o bandit_report.html -f html --exit-zero'
                             archiveArtifacts artifacts: 'bandit_report.*'
                             
                             echo '🔍 Running Semgrep...'
                             def semgrepResult = sh(
-                                script: 'venv-tools/bin/semgrep --config="p/python" --config="p/django" --json -o semgrep_report.json mysite --error',
+                                script: 'venv-tools/bin/semgrep --config="p/python" --config="p/django" --json -o semgrep_report.json . --error',
                                 returnStatus: true
                             )
                             
