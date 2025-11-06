@@ -15,14 +15,26 @@ DEBUG = os.getenv("DEBUG", "True") == "True"
 # 2. Logging
 # ─────────────────────────────────────────────
 LOGGING = {
-    'version': 1,
-    'handlers': {
-        'console': {'class': 'logging.StreamHandler'},
+    "version": 1,
+    "handlers": {
+        "console": {"class": "logging.StreamHandler"},
     },
-    'loggers': {
-        'django.request': {'handlers': ['console'], 'level': 'DEBUG', 'propagate': True},
-        'django.security': {'handlers': ['console'], 'level': 'DEBUG', 'propagate': True},
-        'rest_framework': {'handlers': ['console'], 'level': 'DEBUG', 'propagate': True},
+    "loggers": {
+        "django.request": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": True,
+        },
+        "django.security": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": True,
+        },
+        "rest_framework": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": True,
+        },
     },
 }
 
@@ -31,15 +43,15 @@ LOGGING = {
 # ─────────────────────────────────────────────
 TEMPLATES = [
     {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates'],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.debug',
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [BASE_DIR / "templates"],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
             ],
         },
     },
@@ -61,24 +73,20 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-
     # Apps tiers EXISTANTES
     "rest_framework",
     "rest_framework_simplejwt",
     "django_filters",
     "corsheaders",
     "drf_spectacular",
-
     # NOUVELLES extensions admin (doivent venir AVANT django.contrib.admin)
     "admin_interface",
     "colorfield",
     "import_export",
     "rangefilter",
     "django_admin_listfilter_dropdown",
-
     # Admin Django (doit être APRÈS les extensions)
     "django.contrib.admin",
-
     # Apps projet
     "core",
     "users",
@@ -131,7 +139,9 @@ else:
 AUTH_USER_MODEL = "users.User"
 
 REST_FRAMEWORK = {
-    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated"
+    ],
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.SessionAuthentication",
         "rest_framework_simplejwt.authentication.JWTAuthentication",
@@ -145,7 +155,9 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(os.getenv("JWT_MINUTES", 30))),
+    "ACCESS_TOKEN_LIFETIME": timedelta(
+        minutes=int(os.getenv("JWT_MINUTES", 30))
+    ),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=int(os.getenv("JWT_DAYS", 7))),
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
@@ -207,17 +219,10 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
     "content-type",
     "x-requested-with",
 ]
-CORS_ALLOW_METHODS = [
-    "GET",
-    "POST",
-    "PUT",
-    "PATCH",
-    "DELETE",
-    "OPTIONS"
-]
+CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 CSRF_TRUSTED_ORIGINS = [
-    'https://9800-firebase-mutconi-back-1751236955562.cluster-16.widperq5ebaqo3gy4ksvoqom.cloudworkstations.dev',
-    'https://*.cloudworkstations.dev'
+    "https://9800-firebase-mutconi-back-1751236955562.cluster-16.widperq5ebaqo3gy4ksvoqom.cloudworkstations.dev",
+    "https://*.cloudworkstations.dev",
 ]
 
 # ─────────────────────────────────────────────
@@ -227,6 +232,7 @@ FIREBASE_CREDENTIALS = os.getenv("FIREBASE_CREDENTIALS")
 if FIREBASE_CREDENTIALS:
     try:
         import json
+
         FIREBASE_CONFIG = json.loads(FIREBASE_CREDENTIALS)
     except json.JSONDecodeError:
         FIREBASE_CONFIG = None
@@ -239,15 +245,17 @@ else:
 X_FRAME_OPTIONS = "SAMEORIGIN"  # Nécessaire pour admin_interface
 SILENCED_SYSTEM_CHECKS = ["security.W019"]  # Pour admin_interface
 
-IMPORT_EXPORT_USE_TRANSACTIONS = True  # Pour l'intégrité des données lors des imports
+IMPORT_EXPORT_USE_TRANSACTIONS = (
+    True  # Pour l'intégrité des données lors des imports
+)
 
 # Configuration du thème admin
 ADMIN_SITE_HEADER = "Administration Mutooni"
 ADMIN_SITE_TITLE = "Portail d'administration"
 ADMIN_INDEX_TITLE = "Gestion du backoffice"
 ADMIN_INTERFACE_CONFIG = {
-    'THEME': 'Mutooni',
-    'DARK_MODE': True,  # Activer le mode sombre
-    'COLOR_SCHEME': 'auto',  # auto | light | dark
-    'DEFAULT_COLOR_SCHEME': 'dark',  # Préférer le mode sombre
+    "THEME": "Mutooni",
+    "DARK_MODE": True,  # Activer le mode sombre
+    "COLOR_SCHEME": "auto",  # auto | light | dark
+    "DEFAULT_COLOR_SCHEME": "dark",  # Préférer le mode sombre
 }
