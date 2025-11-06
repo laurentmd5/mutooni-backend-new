@@ -4,7 +4,7 @@ pipeline {
     environment {
         // --- Configuration de base ---
         GH_REPO = 'laurentmd5/mutooni-backend-new'
-        GITHUB_CREDENTIALS_ID = 'my-token'
+        GITHUB_CREDENTIALS_ID = 'my-token-jenkins'
         IMAGE_NAME = "mon-app-django"
         DOCKER_REGISTRY = "docker.io/laurentmd5"
         DOCKER_REGISTRY_CREDENTIALS_ID = 'docker-hub-creds'
