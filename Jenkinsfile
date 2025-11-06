@@ -129,7 +129,7 @@ pipeline {
                         sh """
                             docker run --rm \
                                 --link ${env.TEST_DB_CONTAINER_NAME}:db \
-                                -v \$(pwd)/mysite/core/firebase/serviceAccountKey.json:/app/core/firebase/serviceAccountKey.json \
+                                -v \$(pwd)/mysite/core/firebase/serviceAccountKey.json:/app/core/firebase/serviceAccountKey.json:ro \
                                 -e DB_NAME=mysite_test \
                                 -e DB_USER=postgres \
                                 -e DB_PASSWORD=postgres \

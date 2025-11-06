@@ -54,6 +54,8 @@ COPY . .
 # Donner la propriété du répertoire à notre nouvel utilisateur
 RUN chown -R appuser:appgroup /app
 
+RUN mkdir -p /app/core/firebase && chown -R appuser:appgroup /app/core/firebase
+
 # Changer d'utilisateur pour ne plus être root
 USER appuser
 
