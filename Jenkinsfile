@@ -233,19 +233,34 @@ pipeline {
                 script {
                     try {
                         echo '🔍 Checking Kubernetes cluster connectivity...'
-                        sh "kubectl cluster-info || exit 1; kubectl get nodes || exit 1"
+                        sh """
+                            kubectl cluster-info || (echo "❌ Cannot connect to Kubernetes cluster" && exit 1)
+                            kubectl get nodes || (echo "❌ Cannot get nodes" && exit 1)
+                        """
                         echo "✅ Kubernetes cluster is reachable"
 
                         echo "📦 Creating temporary namespace: ${env.DAST_NAMESPACE}"
-                        sh "kubectl create namespace ${env.DAST_NAMESPACE} || true; kubectl label namespace ${env.DAST_NAMESPACE} jenkins-build=${BUILD_NUMBER} || true"
+                        sh """
+                            kubectl create namespace ${env.DAST_NAMESPACE} || true
+                            kubectl label namespace ${env.DAST_NAMESPACE} jenkins-build=${BUILD_NUMBER} || true
+                        """
 
-                        echo "📥 Ensure Docker image is available for Kubernetes"
-                        sh "docker save ${env.TEST_IMAGE_TAG} | docker load"
+                        echo "📥 Loading Docker image into Minikube..."
+                        sh """
+                            minikube image load ${env.TEST_IMAGE_TAG} || {
+                                echo "⚠️  Fallback to docker save/load method..."
+                                eval \$(minikube docker-env)
+                                docker save ${env.TEST_IMAGE_TAG} | docker load
+                            }
+                            
+                            eval \$(minikube docker-env)
+                            docker images | grep ${env.IMAGE_NAME} || (echo "❌ Image not found in Minikube" && exit 1)
+                        """
+                        echo "✅ Image loaded successfully into Minikube"
 
-                        // Déploiement PostgreSQL
                         echo '🗄️  Deploying PostgreSQL database...'
                         sh """
-                            cat <<EOF | kubectl apply -n ${env.DAST_NAMESPACE} -f -
+cat <<'EOF' | kubectl apply -n ${env.DAST_NAMESPACE} -f -
 apiVersion: v1
 kind: Secret
 metadata:
@@ -296,15 +311,17 @@ spec:
           readinessProbe:
             exec:
               command: ["pg_isready", "-U", "postgres"]
-            initialDelaySeconds: 10
+            initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 3
+            failureThreshold: 3
           livenessProbe:
             exec:
               command: ["pg_isready", "-U", "postgres"]
-            initialDelaySeconds: 30
+            initialDelaySeconds: 15
             periodSeconds: 10
             timeoutSeconds: 3
+            failureThreshold: 3
           resources:
             requests:
               memory: "256Mi"
@@ -313,15 +330,30 @@ spec:
               memory: "512Mi"
               cpu: "500m"
 EOF
-                        """
+"""
 
                         echo '⏳ Waiting for PostgreSQL to be ready...'
-                        sh "kubectl wait --for=condition=available --timeout=${env.DAST_TIMEOUT}s deployment/${env.DAST_DB_NAME} -n ${env.DAST_NAMESPACE}"
+                        sh """
+                            kubectl wait --for=condition=available \
+                                --timeout=${env.DAST_TIMEOUT}s \
+                                deployment/${env.DAST_DB_NAME} \
+                                -n ${env.DAST_NAMESPACE} || {
+                                echo "❌ PostgreSQL deployment failed"
+                                kubectl get pods -n ${env.DAST_NAMESPACE}
+                                kubectl describe deployment ${env.DAST_DB_NAME} -n ${env.DAST_NAMESPACE}
+                                exit 1
+                            }
+                        """
+                        echo '✅ PostgreSQL is ready'
 
-                        // Déploiement Django
+                        echo '🔑 Generating Django SECRET_KEY...'
+                        def djangoSecretKey = sh(
+                            script: 'openssl rand -base64 50 | tr -d "\n"',
+                            returnStdout: true
+                        ).trim()
+
                         echo '🐍 Deploying Django application...'
-                        withCredentials([string(credentialsId: 'DJANGO_SECRET_KEY', variable: 'DJANGO_SECRET')]) {
-                            sh """
+                        sh """
 cat <<EOF | kubectl apply -n ${env.DAST_NAMESPACE} -f -
 apiVersion: v1
 kind: Secret
@@ -329,7 +361,7 @@ metadata:
   name: django-secret
 type: Opaque
 stringData:
-  SECRET_KEY: \${DJANGO_SECRET}
+  SECRET_KEY: "${djangoSecretKey}"
   DB_NAME: mysite_dast
   DB_USER: postgres
   DB_PASSWORD: postgres_dast_secure
@@ -371,18 +403,34 @@ spec:
       initContainers:
         - name: wait-for-db
           image: busybox:1.36
-          command: ["sh", "-c", "until nc -z ${env.DAST_DB_NAME} 5432; do echo 'Waiting for database...'; sleep 2; done; echo 'Database is ready!'"]
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "Waiting for PostgreSQL..."
+              until nc -z ${env.DAST_DB_NAME} 5432; do
+                echo "Database not ready yet, waiting..."
+                sleep 2
+              done
+              echo "✅ Database is ready!"
         - name: django-migrate
           image: ${env.TEST_IMAGE_TAG}
+          imagePullPolicy: Never
           command: ["/bin/sh", "-c"]
           args:
-            - python manage.py migrate --noinput
+            - |
+              echo "Running Django migrations..."
+              python manage.py migrate --noinput
+              echo "✅ Migrations completed"
           envFrom:
             - secretRef:
                 name: django-secret
           env:
             - name: DJANGO_SETTINGS_MODULE
               value: "mysite.settings"
+            - name: DEBUG
+              value: "False"
+            - name: ALLOWED_HOSTS
+              value: "*"
       containers:
         - name: django
           image: ${env.TEST_IMAGE_TAG}
@@ -395,44 +443,182 @@ spec:
           env:
             - name: DJANGO_SETTINGS_MODULE
               value: "mysite.settings"
+            - name: DEBUG
+              value: "False"
+            - name: ALLOWED_HOSTS
+              value: "*"
           readinessProbe:
             httpGet:
               path: /
               port: 8000
-            initialDelaySeconds: 15
+            initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 3
-            failureThreshold: 3
+            failureThreshold: 6
           livenessProbe:
             httpGet:
               path: /
               port: 8000
-            initialDelaySeconds: 30
+            initialDelaySeconds: 20
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
           resources:
             requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
               memory: "512Mi"
               cpu: "500m"
-            limits:
-              memory: "1Gi"
-              cpu: "1000m"
 EOF
-                            """
-                        }
+"""
 
                         echo '⏳ Waiting for Django application to be ready...'
-                        sh "kubectl wait --for=condition=available --timeout=${env.DAST_TIMEOUT}s deployment/${env.DAST_APP_NAME} -n ${env.DAST_NAMESPACE}"
+                        sh """
+                            timeout ${env.DAST_TIMEOUT} bash -c '
+                                while true; do
+                                    echo "=== Pod Status ==="
+                                    kubectl get pods -n ${env.DAST_NAMESPACE} -l app=django
+                                    
+                                    POD_STATUS=\$(kubectl get pods -n ${env.DAST_NAMESPACE} -l app=django -o jsonpath="{.items[0].status.phase}" 2>/dev/null || echo "Unknown")
+                                    echo "Current status: \$POD_STATUS"
+                                    
+                                    if [ "\$POD_STATUS" = "Running" ]; then
+                                        echo "✅ Pod is running, checking readiness..."
+                                        if kubectl get deployment ${env.DAST_APP_NAME} -n ${env.DAST_NAMESPACE} -o jsonpath="{.status.readyReplicas}" | grep -q "1"; then
+                                            echo "✅ Django is ready!"
+                                            break
+                                        fi
+                                    fi
+                                    
+                                    if [ "\$POD_STATUS" = "Error" ] || [ "\$POD_STATUS" = "CrashLoopBackOff" ]; then
+                                        echo "❌ Pod in error state, showing logs:"
+                                        kubectl logs -n ${env.DAST_NAMESPACE} -l app=django --tail=50 --all-containers=true || true
+                                        exit 1
+                                    fi
+                                    
+                                    sleep 5
+                                done
+                            ' || {
+                                echo "❌ Django deployment failed or timed out"
+                                echo "=== Deployment Status ==="
+                                kubectl describe deployment ${env.DAST_APP_NAME} -n ${env.DAST_NAMESPACE}
+                                echo "=== Pod Status ==="
+                                kubectl get pods -n ${env.DAST_NAMESPACE} -l app=django
+                                echo "=== Pod Description ==="
+                                kubectl describe pod -n ${env.DAST_NAMESPACE} -l app=django
+                                echo "=== Pod Logs ==="
+                                kubectl logs -n ${env.DAST_NAMESPACE} -l app=django --tail=100 --all-containers=true || true
+                                exit 1
+                            }
+                        """
+                        echo '✅ Django application is ready'
 
-                        def nodePort = sh(script: "kubectl get svc ${env.DAST_APP_NAME} -n ${env.DAST_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'", returnStdout: true).trim()
-                        env.DAST_APP_URL = "http://127.0.0.1:${nodePort}"
-                        echo "✅ Application deployed and accessible at: ${env.DAST_APP_URL}"
+                        echo '🌐 Getting application URL...'
+                        def minikubeIP = sh(
+                            script: 'minikube ip',
+                            returnStdout: true
+                        ).trim()
+                        
+                        env.DAST_APP_URL = "http://${minikubeIP}:${env.DAST_NODE_PORT}"
+                        echo "📍 Application URL: ${env.DAST_APP_URL}"
+
+                        echo '🏥 Performing health check...'
+                        sh """
+                            max_attempts=20
+                            attempt=0
+                            
+                            echo "Testing connection to ${env.DAST_APP_URL}"
+                            
+                            while [ \$attempt -lt \$max_attempts ]; do
+                                attempt=\$((attempt+1))
+                                echo "Attempt \$attempt/\$max_attempts..."
+                                
+                                HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" ${env.DAST_APP_URL}/ || echo "000")
+                                
+                                if [ "\$HTTP_CODE" = "200" ] || [ "\$HTTP_CODE" = "301" ] || [ "\$HTTP_CODE" = "302" ]; then
+                                    echo "✅ Health check passed! HTTP \$HTTP_CODE"
+                                    exit 0
+                                fi
+                                
+                                echo "⏳ HTTP \$HTTP_CODE - Waiting for app to respond..."
+                                sleep 5
+                            done
+                            
+                            echo "❌ Health check failed after \$max_attempts attempts"
+                            echo "=== Final Pod Status ==="
+                            kubectl get pods -n ${env.DAST_NAMESPACE} -l app=django
+                            echo "=== Service Status ==="
+                            kubectl get svc -n ${env.DAST_NAMESPACE}
+                            echo "=== Django Logs ==="
+                            kubectl logs -n ${env.DAST_NAMESPACE} -l app=django --tail=100 || true
+                            exit 1
+                        """
+
+                        echo '📊 Deployment Summary:'
+                        sh """
+                            echo "================================"
+                            echo "Namespace: ${env.DAST_NAMESPACE}"
+                            echo "Application URL: ${env.DAST_APP_URL}"
+                            echo "================================"
+                            echo ""
+                            echo "=== Pods ==="
+                            kubectl get pods -n ${env.DAST_NAMESPACE}
+                            echo ""
+                            echo "=== Services ==="
+                            kubectl get svc -n ${env.DAST_NAMESPACE}
+                            echo ""
+                            echo "=== Deployments ==="
+                            kubectl get deployments -n ${env.DAST_NAMESPACE}
+                        """
+
+                        writeFile file: 'dast-deployment-info.txt', text: """
+DAST_NAMESPACE=${env.DAST_NAMESPACE}
+DAST_APP_URL=${env.DAST_APP_URL}
+DAST_APP_NAME=${env.DAST_APP_NAME}
+DAST_DB_NAME=${env.DAST_DB_NAME}
+MINIKUBE_IP=${minikubeIP}
+NODE_PORT=${env.DAST_NODE_PORT}
+"""
+                        archiveArtifacts artifacts: 'dast-deployment-info.txt', allowEmptyArchive: false
 
                         echo '✅ DAST deployment completed successfully!'
+
                     } catch (Exception e) {
                         currentBuild.result = 'FAILURE'
                         echo "❌ DAST deployment failed: ${e.message}"
+                        
+                        echo '📋 Detailed debugging information:'
+                        sh """
+                            echo "=== All Pods in Namespace ==="
+                            kubectl get pods -n ${env.DAST_NAMESPACE} -o wide || true
+                            echo ""
+                            echo "=== All Services ==="
+                            kubectl get svc -n ${env.DAST_NAMESPACE} -o wide || true
+                            echo ""
+                            echo "=== Django Deployment ==="
+                            kubectl describe deployment ${env.DAST_APP_NAME} -n ${env.DAST_NAMESPACE} || true
+                            echo ""
+                            echo "=== Django Pod Details ==="
+                            kubectl describe pod -n ${env.DAST_NAMESPACE} -l app=django || true
+                            echo ""
+                            echo "=== Django Logs (all containers) ==="
+                            kubectl logs -n ${env.DAST_NAMESPACE} -l app=django --all-containers=true --prefix=true || true
+                            echo ""
+                            echo "=== PostgreSQL Pod ==="
+                            kubectl describe pod -n ${env.DAST_NAMESPACE} -l app=postgres || true
+                            echo ""
+                            echo "=== PostgreSQL Logs ==="
+                            kubectl logs -n ${env.DAST_NAMESPACE} -l app=postgres --tail=50 || true
+                            echo ""
+                            echo "=== Recent Events ==="
+                            kubectl get events -n ${env.DAST_NAMESPACE} --sort-by='.lastTimestamp' || true
+                            echo ""
+                            echo "=== Minikube Docker Images ==="
+                            eval \$(minikube docker-env)
+                            docker images | grep ${env.IMAGE_NAME} || echo "Image not found in Minikube"
+                        """
+                        
                         throw e
                     }
                 }
@@ -440,7 +626,11 @@ EOF
             post {
                 failure {
                     echo '🧹 Cleaning up failed DAST deployment...'
-                    sh "kubectl delete namespace ${env.DAST_NAMESPACE} --wait=false || true"
+                    script {
+                        sh """
+                            kubectl delete namespace ${env.DAST_NAMESPACE} --wait=false --ignore-not-found=true || true
+                        """
+                    }
                 }
             }
         }
@@ -452,6 +642,16 @@ EOF
             sh "docker logout ${env.DOCKER_REGISTRY} || true"
             sh "docker stop ${env.TEST_DB_CONTAINER_NAME} || true"
             sh "docker rm ${env.TEST_DB_CONTAINER_NAME} || true"
+            
+            script {
+                if (env.DAST_NAMESPACE) {
+                    echo "🧹 Cleaning up DAST namespace: ${env.DAST_NAMESPACE}"
+                    sh """
+                        kubectl delete namespace ${env.DAST_NAMESPACE} --wait=false --ignore-not-found=true || true
+                    """
+                }
+            }
+            
             cleanWs()
         }
         success { echo '✅ Pipeline a réussi !' }
