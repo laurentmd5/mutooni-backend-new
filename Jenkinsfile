@@ -4,7 +4,7 @@ pipeline {
     environment {
         // --- Configuration de base ---
         GH_REPO = 'laurentmd5/mutooni-backend-new'
-        GITHUB_CREDENTIALS_ID = 'my-token-jenkins'
+        GITHUB_CREDENTIALS_ID = 'my-token-jenkins' // Assurez-vous que c'est le bon ID
         IMAGE_NAME = "mon-app-django"
         DOCKER_REGISTRY = "docker.io/laurentmd5"
         DOCKER_REGISTRY_CREDENTIALS_ID = 'docker-hub-creds'
@@ -17,8 +17,8 @@ pipeline {
     
     options {
         skipDefaultCheckout()
-        timestamps()
-        timeout(time: 1, unit: 'HOURS')
+        timestamps() // Bonne addition !
+        timeout(time: 1, unit: 'HOURS') // Bonne addition !
     }
 
     stages {
@@ -46,6 +46,7 @@ pipeline {
                     sh '''
                         mkdir -p mysite/core/firebase
                         cp "$FIREBASE_KEY" mysite/core/firebase/serviceAccountKey.json
+                        # Correction des permissions pour le montage Docker
                         chmod 644 mysite/core/firebase/serviceAccountKey.json
                     '''
                 }
@@ -55,53 +56,19 @@ pipeline {
 
         stage('Analyse Qualité & Sécurité en parallèle') {
             parallel {
-                stage('Linting & Qualité du Code') {
+                stage('Linting & Qualité du Code (Flake8)') {
                     steps {
                         echo '🔍 Checking code style with flake8...'
                         script {
-                            sh '''
-                                # Vérifier d'abord si Python est disponible
-                                echo "🔍 Vérification de l'environnement Python..."
-                                if command -v python3 >/dev/null 2>&1; then
-                                    echo "✅ Python3 trouvé"
-                                    PYTHON_CMD="python3"
-                                elif command -v python >/dev/null 2>&1; then
-                                    echo "✅ Python trouvé (version standard)"
-                                    PYTHON_CMD="python"
-                                else
-                                    echo "❌ Aucun Python trouvé - installation de Python3"
-                                    apt-get update && apt-get install -y python3 python3-pip
-                                    PYTHON_CMD="python3"
-                                fi
-                                
-                                # Essayer de créer l'environnement virtuel, sinon utiliser l'installation système
-                                if $PYTHON_CMD -c "import venv" 2>/dev/null; then
-                                    echo "✅ Création de l'environnement virtuel..."
-                                    $PYTHON_CMD -m venv venv-lint
-                                    PIP_CMD="venv-lint/bin/pip"
-                                    FLAKE8_CMD="venv-lint/bin/flake8"
-                                else
-                                    echo "⚠️ Module venv non disponible - utilisation de l'installation système"
-                                    PIP_CMD="pip3"
-                                    FLAKE8_CMD="flake8"
-                                    # Installer flake8 directement
-                                    $PIP_CMD install --user flake8 flake8-html
-                                fi
-                                
-                                # Installer/upgrade les packages
-                                $PIP_CMD install --upgrade pip --quiet
-                                $PIP_CMD install flake8 flake8-html --quiet
-                            '''
+                            // Méthode robuste : créer un venv dédié pour le linting
+                            sh 'python3 -m venv venv-lint'
+                            echo 'Installing linting tools...'
+                            sh 'venv-lint/bin/pip install --upgrade pip --quiet'
+                            sh 'venv-lint/bin/pip install flake8 flake8-html --quiet'
                             
                             echo '📏 Running Flake8 - Critical Errors (E9, F63, F7, F82)...'
                             def flake8Critical = sh(
-                                script: '''
-                                    if command -v venv-lint/bin/flake8 >/dev/null 2>&1; then
-                                        venv-lint/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-                                    else
-                                        python3 -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-                                    fi
-                                ''',
+                                script: 'venv-lint/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics',
                                 returnStatus: true
                             )
                             
@@ -112,31 +79,20 @@ pipeline {
                                 echo '✅ Aucune erreur de syntaxe critique'
                             }
                             
-                            echo '📊 Running Flake8 - Quality Checks...'
+                            echo '📊 Running Flake8 - Quality Checks & Report...'
                             sh '''
-                                if command -v venv-lint/bin/flake8 >/dev/null 2>&1; then
-                                    venv-lint/bin/flake8 . \
-                                        --count \
-                                        --exit-zero \
-                                        --max-complexity=10 \
-                                        --max-line-length=120 \
-                                        --statistics \
-                                        --format=html \
-                                        --htmldir=flake8-report
-                                else
-                                    python3 -m flake8 . \
-                                        --count \
-                                        --exit-zero \
-                                        --max-complexity=10 \
-                                        --max-line-length=120 \
-                                        --statistics \
-                                        --format=html \
-                                        --htmldir=flake8-report
-                                fi
+                                venv-lint/bin/flake8 . \
+                                    --count \
+                                    --exit-zero \
+                                    --max-complexity=10 \
+                                    --max-line-length=120 \
+                                    --statistics \
+                                    --format=html \
+                                    --htmldir=flake8-report
                             '''
                             
                             archiveArtifacts artifacts: 'flake8-report/**', allowEmptyArchive: true
-                            sh 'rm -rf venv-lint 2>/dev/null || true'
+                            sh 'rm -rf venv-lint'
                             echo '✅ Linting completed'
                         }
                     }
@@ -146,67 +102,26 @@ pipeline {
                     steps {
                         echo '🛡️  Running SAST with Bandit and Semgrep...'
                         script {
-                            sh '''
-                                # Vérifier d'abord si Python est disponible
-                                echo "🔍 Vérification de l'environnement Python..."
-                                if command -v python3 >/dev/null 2>&1; then
-                                    echo "✅ Python3 trouvé"
-                                    PYTHON_CMD="python3"
-                                elif command -v python >/dev/null 2>&1; then
-                                    echo "✅ Python trouvé (version standard)"
-                                    PYTHON_CMD="python"
-                                else
-                                    echo "❌ Aucun Python trouvé - installation de Python3"
-                                    apt-get update && apt-get install -y python3 python3-pip
-                                    PYTHON_CMD="python3"
-                                fi
-                                
-                                # Essayer de créer l'environnement virtuel, sinon utiliser l'installation système
-                                if $PYTHON_CMD -c "import venv" 2>/dev/null; then
-                                    echo "✅ Création de l'environnement virtuel..."
-                                    $PYTHON_CMD -m venv venv-tools
-                                    PIP_CMD="venv-tools/bin/pip"
-                                    BANDIT_CMD="venv-tools/bin/bandit"
-                                    SEMGREP_CMD="venv-tools/bin/semgrep"
-                                else
-                                    echo "⚠️ Module venv non disponible - utilisation de l'installation système"
-                                    PIP_CMD="pip3"
-                                    BANDIT_CMD="bandit"
-                                    SEMGREP_CMD="semgrep"
-                                    # Installer directement
-                                    $PIP_CMD install --user bandit semgrep
-                                fi
-                                
-                                # Installer/upgrade les packages
-                                $PIP_CMD install --upgrade pip --quiet
-                                $PIP_CMD install bandit semgrep --quiet
-                            '''
+                            // Méthode robuste : venv dédié pour le SAST
+                            sh 'python3 -m venv venv-tools'
+                            echo 'Installing SAST tools...'
+                            sh 'venv-tools/bin/pip install --upgrade pip --quiet'
+                            sh 'venv-tools/bin/pip install bandit semgrep --quiet'
                             
                             echo '🔍 Running Bandit...'
                             sh '''
-                                if command -v venv-tools/bin/bandit >/dev/null 2>&1; then
-                                    venv-tools/bin/bandit -r . -o bandit_report.json -f json --exit-zero
-                                    venv-tools/bin/bandit -r . -o bandit_report.html -f html --exit-zero
-                                else
-                                    python3 -m bandit -r . -o bandit_report.json -f json --exit-zero
-                                    python3 -m bandit -r . -o bandit_report.html -f html --exit-zero
-                                fi
+                                venv-tools/bin/bandit -r . -o bandit_report.json -f json --exit-zero
+                                venv-tools/bin/bandit -r . -o bandit_report.html -f html --exit-zero
                             '''
-                            archiveArtifacts artifacts: 'bandit_report.*'
+                            archiveArtifacts artifacts: 'bandit_report.*', allowEmptyArchive: true
                             
                             echo '🔍 Running Semgrep...'
                             def semgrepResult = sh(
-                                script: '''
-                                    if command -v venv-tools/bin/semgrep >/dev/null 2>&1; then
-                                        venv-tools/bin/semgrep --config="p/python" --config="p/django" --json -o semgrep_report.json . --error
-                                    else
-                                        python3 -m semgrep --config="p/python" --config="p/django" --json -o semgrep_report.json . --error
-                                    fi
-                                ''',
+                                script: 'venv-tools/bin/semgrep --config="p/python" --config="p/django" --json -o semgrep_report.json . --error',
                                 returnStatus: true
                             )
                             
-                            archiveArtifacts artifacts: 'semgrep_report.json'
+                            archiveArtifacts artifacts: 'semgrep_report.json', allowEmptyArchive: true
                             
                             if (semgrepResult != 0) {
                                 currentBuild.result = 'UNSTABLE'
@@ -215,7 +130,7 @@ pipeline {
                                 echo '✅ Aucun problème de sécurité détecté'
                             }
                             
-                            sh 'rm -rf venv-tools 2>/dev/null || true'
+                            sh 'rm -rf venv-tools'
                         }
                     }
                 }
@@ -313,7 +228,7 @@ pipeline {
                             ${env.TEST_IMAGE_TAG}
                     """
                     
-                    archiveArtifacts artifacts: 'trivy_image_report.json'
+                    archiveArtifacts artifacts: 'trivy_image_report.json', allowEmptyArchive: true
                 }
             }
         }
@@ -337,14 +252,17 @@ pipeline {
                         """
                         
                         echo '⏳ Waiting for database to be healthy...'
+                        // Utiliser une boucle 'until' robuste au lieu d'un 'sleep' fixe
                         sh """
-                            timeout 30 sh -c 'until docker exec ${env.TEST_DB_CONTAINER_NAME} pg_isready -U postgres; do sleep 1; done'
+                            timeout 30s bash -c 'until docker inspect --format="{{.State.Health.Status}}" ${env.TEST_DB_CONTAINER_NAME} | grep -q "healthy"; do sleep 1; done'
                         """
+                        echo '✅ Database is healthy.'
 
-                        echo '🔐 Setting correct permissions on Firebase key...'
-                        sh 'chmod 644 mysite/core/firebase/serviceAccountKey.json'
-
-                        echo '🧪 Running tests and generating JUnit report...'
+                        // Pas besoin de 'chmod' ici, il est déjà fait dans le stage 'Inject'
+                        
+                        echo '🧪 Running tests...'
+                        // Note : le dossier test-reports est créé par le 'docker run -v'
+                        sh 'mkdir -p test-reports'
                         sh """
                             docker run --rm \
                                 --link ${env.TEST_DB_CONTAINER_NAME}:db \
@@ -394,6 +312,26 @@ pipeline {
             
             cleanWs()
         }
-        // Nous aurons des 'failure' et 'success' plus tard
+        
+        // --- Notifications ---
+        success {
+            echo '✅ Pipeline a réussi !'
+            // Exemple de notification (à décommenter et configurer)
+            // mail to: 'votre.email@example.com',
+            //      subject: "Pipeline Réussi: ${env.JOB_NAME} [${env.BUILD_NUMBER}]",
+            //      body: "Le build ${env.BUILD_NUMBER} pour ${env.GH_REPO} a réussi."
+        }
+        failure {
+            echo '❌ Pipeline a échoué !'
+            // mail to: 'votre.email@example.com',
+            //      subject: "ÉCHEC Pipeline: ${env.JOB_NAME} [${env.BUILD_NUMBER}]",
+            //      body: "Le build ${env.BUILD_NUMBER} a échoué. Consultez les logs : ${env.BUILD_URL}"
+        }
+        unstable {
+            echo '⚠️ Pipeline instable (problèmes de qualité/sécurité trouvés).'
+            // mail to: 'votre.email@example.com',
+            //      subject: "Pipeline Instable: ${env.JOB_NAME} [${env.BUILD_NUMBER}]",
+            //      body: "Le build ${env.BUILD_NUMBER} est instable (problèmes SAST/SCA). Consultez les rapports : ${env.BUILD_URL}"
+        }
     }
 }
