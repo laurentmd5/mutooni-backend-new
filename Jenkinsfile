@@ -309,7 +309,7 @@ pipeline {
                             kubectl label namespace ${env.DAST_NAMESPACE} jenkins-build=${BUILD_NUMBER} || true
                         """
 
-                        // Vérification que l'image Docker est disponible (Jenkins doit avoir accès)
+                        // Vérification que l'image Docker est disponible
                         echo "📥 Ensure Docker image is available for Kubernetes"
                         sh """
                             docker save ${env.TEST_IMAGE_TAG} | docker load
@@ -337,7 +337,7 @@ pipeline {
             app: postgres
         spec:
         ports:
-        - port: 5432
+            - port: 5432
             targetPort: 5432
         selector:
             app: postgres
@@ -359,30 +359,30 @@ pipeline {
                 app: postgres
             spec:
             containers:
-            - name: postgres
+                - name: postgres
                 image: postgres:13
                 ports:
-                - containerPort: 5432
+                    - containerPort: 5432
                 envFrom:
-                - secretRef:
-                    name: postgres-secret
+                    - secretRef:
+                        name: postgres-secret
                 readinessProbe:
-                exec:
+                    exec:
                     command: ["pg_isready", "-U", "postgres"]
-                initialDelaySeconds: 10
-                periodSeconds: 5
-                timeoutSeconds: 3
+                    initialDelaySeconds: 10
+                    periodSeconds: 5
+                    timeoutSeconds: 3
                 livenessProbe:
-                exec:
+                    exec:
                     command: ["pg_isready", "-U", "postgres"]
-                initialDelaySeconds: 30
-                periodSeconds: 10
-                timeoutSeconds: 3
+                    initialDelaySeconds: 30
+                    periodSeconds: 10
+                    timeoutSeconds: 3
                 resources:
-                requests:
+                    requests:
                     memory: "256Mi"
                     cpu: "250m"
-                limits:
+                    limits:
                     memory: "512Mi"
                     cpu: "500m"
         EOF
@@ -424,7 +424,7 @@ pipeline {
         spec:
         type: NodePort
         ports:
-        - port: ${env.DAST_SERVICE_PORT}
+            - port: ${env.DAST_SERVICE_PORT}
             targetPort: 8000
             nodePort: ${env.DAST_NODE_PORT}
             protocol: TCP
@@ -448,54 +448,54 @@ pipeline {
                 app: django
             spec:
             initContainers:
-            - name: wait-for-db
+                - name: wait-for-db
                 image: busybox:1.36
                 command: ["sh", "-c", "until nc -z ${env.DAST_DB_NAME} 5432; do echo 'Waiting for database...'; sleep 2; done; echo 'Database is ready!'"]
-            - name: django-migrate
+                - name: django-migrate
                 image: ${env.TEST_IMAGE_TAG}
                 command: ["/bin/sh", "-c"]
                 args:
-                - |
-                python manage.py migrate --noinput
+                    - |
+                    python manage.py migrate --noinput
                 envFrom:
-                - secretRef:
-                    name: django-secret
+                    - secretRef:
+                        name: django-secret
                 env:
-                - name: DJANGO_SETTINGS_MODULE
-                value: "mysite.settings"
+                    - name: DJANGO_SETTINGS_MODULE
+                    value: "mysite.settings"
             containers:
-            - name: django
+                - name: django
                 image: ${env.TEST_IMAGE_TAG}
                 imagePullPolicy: Never
                 ports:
-                - containerPort: 8000
+                    - containerPort: 8000
                 envFrom:
-                - secretRef:
-                    name: django-secret
+                    - secretRef:
+                        name: django-secret
                 env:
-                - name: DJANGO_SETTINGS_MODULE
-                value: "mysite.settings"
+                    - name: DJANGO_SETTINGS_MODULE
+                    value: "mysite.settings"
                 readinessProbe:
-                httpGet:
+                    httpGet:
                     path: /
                     port: 8000
-                initialDelaySeconds: 15
-                periodSeconds: 5
-                timeoutSeconds: 3
-                failureThreshold: 3
+                    initialDelaySeconds: 15
+                    periodSeconds: 5
+                    timeoutSeconds: 3
+                    failureThreshold: 3
                 livenessProbe:
-                httpGet:
+                    httpGet:
                     path: /
                     port: 8000
-                initialDelaySeconds: 30
-                periodSeconds: 10
-                timeoutSeconds: 5
-                failureThreshold: 3
+                    initialDelaySeconds: 30
+                    periodSeconds: 10
+                    timeoutSeconds: 5
+                    failureThreshold: 3
                 resources:
-                requests:
+                    requests:
                     memory: "512Mi"
                     cpu: "500m"
-                limits:
+                    limits:
                     memory: "1Gi"
                     cpu: "1000m"
         EOF
