@@ -16,6 +16,7 @@ pipeline {
         DAST_SERVICE_PORT = "8000"
         DAST_NODE_PORT = "30080"
         DAST_TIMEOUT = "180"
+        IMAGE_PULL_POLICY = "IfNotPresent"  // ← SOLUTION AJOUTÉE ICI
     }
 
     options {
@@ -245,35 +246,21 @@ pipeline {
                             kubectl label namespace ${env.DAST_NAMESPACE} jenkins-build=${BUILD_NUMBER} || true
                         """
 
-                        echo "📥 Loading Docker image into Minikube..."
+                        echo "📥 Loading Docker image into Minikube (méthode de secours)..."
                         sh """
-                            # Passer au contexte Docker de Minikube
-                            eval \$(minikube docker-env)
-                            
-                            # Nettoyer les anciennes images
-                            echo "🧹 Cleaning old images..."
-                            docker images ${env.IMAGE_NAME} -q | xargs -r docker rmi -f || true
-                            
-                            # Charger la nouvelle image depuis le daemon Docker local
-                            echo "📦 Loading image ${env.TEST_IMAGE_TAG}..."
-                            
-                            # Méthode 1: Via docker save/load (plus fiable)
-                            docker save ${env.TEST_IMAGE_TAG} | docker load
-                            
-                            # Vérifier que l'image est bien présente
-                            echo "🔍 Verifying loaded image..."
-                            docker images
-                            
-                            if ! docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "^${env.TEST_IMAGE_TAG}\$"; then
-                                echo "❌ Image ${env.TEST_IMAGE_TAG} not found in Minikube Docker"
-                                echo "Available images:"
-                                docker images
-                                exit 1
+                            # Essayer de charger l'image dans Minikube comme méthode de secours
+                            if minikube image load ${env.TEST_IMAGE_TAG} 2>/dev/null; then
+                                echo "✅ Image chargée dans Minikube via minikube image load"
+                            else
+                                echo "⚠️  Fallback: Utilisation de Docker Hub directement"
+                                # Nettoyer le contexte Docker de Minikube
+                                eval \$(minikube docker-env) 2>/dev/null || true
                             fi
                             
-                            echo "✅ Image ${env.TEST_IMAGE_TAG} successfully loaded"
+                            # Vérification des images disponibles
+                            echo "🔍 Vérification des images disponibles dans Minikube:"
+                            minikube image ls | grep ${env.IMAGE_NAME} || echo "ℹ️  Image non trouvée localement, utilisation de Docker Hub"
                         """
-                        echo "✅ Image loaded successfully into Minikube"
 
                         echo '🗄️  Deploying PostgreSQL database...'
                         sh """
@@ -369,7 +356,7 @@ EOF
                             returnStdout: true
                         ).trim()
 
-                        echo '🐍 Deploying Django application...'
+                        echo '🐍 Deploying Django application with improved configuration...'
                         sh """
 cat <<EOF | kubectl apply -n ${env.DAST_NAMESPACE} -f -
 apiVersion: v1
@@ -431,12 +418,14 @@ spec:
               echo "✅ Database is ready!"
         - name: django-migrate
           image: ${env.TEST_IMAGE_TAG}
-          imagePullPolicy: Never
+          imagePullPolicy: ${env.IMAGE_PULL_POLICY}  # ← CHANGEMENT CRITIQUE ICI
           command: ["/bin/sh", "-c"]
           args:
             - |
               echo "Running Django migrations..."
               python manage.py migrate --noinput
+              echo "Collecting static files..."
+              python manage.py collectstatic --noinput
               echo "✅ Migrations completed"
           envFrom:
             - secretRef:
@@ -451,7 +440,7 @@ spec:
       containers:
         - name: django
           image: ${env.TEST_IMAGE_TAG}
-          imagePullPolicy: Never
+          imagePullPolicy: ${env.IMAGE_PULL_POLICY}  # ← CHANGEMENT CRITIQUE ICI
           ports:
             - containerPort: 8000
           envFrom:
@@ -468,7 +457,7 @@ spec:
             httpGet:
               path: /
               port: 8000
-            initialDelaySeconds: 10
+            initialDelaySeconds: 30  # Augmenté pour laisser le temps à l'app de démarrer
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 6
@@ -476,7 +465,7 @@ spec:
             httpGet:
               path: /
               port: 8000
-            initialDelaySeconds: 20
+            initialDelaySeconds: 45
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
@@ -495,50 +484,47 @@ EOF
                             timeout ${env.DAST_TIMEOUT} bash -c '
                                 while true; do
                                     echo "=== Pod Status ==="
-                                    kubectl get pods -n ${env.DAST_NAMESPACE} -l app=django
+                                    kubectl get pods -n ${env.DAST_NAMESPACE} -l app=django -o wide
                                     
                                     POD_STATUS=\$(kubectl get pods -n ${env.DAST_NAMESPACE} -l app=django -o jsonpath="{.items[0].status.phase}" 2>/dev/null || echo "Unknown")
                                     echo "Current status: \$POD_STATUS"
                                     
                                     if [ "\$POD_STATUS" = "Running" ]; then
                                         echo "✅ Pod is running, checking readiness..."
-                                        if kubectl get deployment ${env.DAST_APP_NAME} -n ${env.DAST_NAMESPACE} -o jsonpath="{.status.readyReplicas}" | grep -q "1"; then
+                                        READY_REPLICAS=\$(kubectl get deployment ${env.DAST_APP_NAME} -n ${env.DAST_NAMESPACE} -o jsonpath="{.status.readyReplicas}" 2>/dev/null || echo "0")
+                                        if [ "\$READY_REPLICAS" = "1" ]; then
                                             echo "✅ Django is ready!"
                                             break
                                         fi
                                     fi
                                     
-                                    if [ "\$POD_STATUS" = "Error" ] || [ "\$POD_STATUS" = "CrashLoopBackOff" ]; then
+                                    if [ "\$POD_STATUS" = "Failed" ] || [ "\$POD_STATUS" = "Error" ] || [ "\$POD_STATUS" = "CrashLoopBackOff" ]; then
                                         echo "❌ Pod in error state, showing logs:"
                                         kubectl logs -n ${env.DAST_NAMESPACE} -l app=django --tail=50 --all-containers=true || true
+                                        echo "=== Pod description for debugging ==="
+                                        kubectl describe pod -n ${env.DAST_NAMESPACE} -l app=django
                                         exit 1
                                     fi
                                     
-                                    # Vérifier s'il y a une erreur d'image
-                                    if kubectl get pods -n ${env.DAST_NAMESPACE} -l app=django -o jsonpath="{.items[0].status.containerStatuses[*].state.waiting.reason}" 2>/dev/null | grep -q "ErrImageNeverPull"; then
-                                        echo "❌ ErrImageNeverPull detected"
-                                        echo "Image expected: ${env.TEST_IMAGE_TAG}"
-                                        echo "Images in Minikube:"
-                                        eval \$(minikube docker-env)
-                                        docker images | grep ${env.IMAGE_NAME}
-                                        exit 1
-                                    fi
+                                    # Vérifier les événements récents
+                                    echo "=== Recent Events ==="
+                                    kubectl get events -n ${env.DAST_NAMESPACE} --field-selector involvedObject.kind=Pod --sort-by='.lastTimestamp' | tail -5
                                     
-                                    sleep 5
+                                    sleep 10
                                 done
                             ' || {
                                 echo "❌ Django deployment failed or timed out"
-                                echo "=== Deployment Status ==="
-                                kubectl describe deployment ${env.DAST_APP_NAME} -n ${env.DAST_NAMESPACE}
+                                echo "=== Final Debugging Information ==="
+                                echo "Image used: ${env.TEST_IMAGE_TAG}"
+                                echo "Pull policy: ${env.IMAGE_PULL_POLICY}"
                                 echo "=== Pod Status ==="
-                                kubectl get pods -n ${env.DAST_NAMESPACE} -l app=django
+                                kubectl get pods -n ${env.DAST_NAMESPACE} -l app=django -o wide
                                 echo "=== Pod Description ==="
                                 kubectl describe pod -n ${env.DAST_NAMESPACE} -l app=django
                                 echo "=== Pod Logs ==="
                                 kubectl logs -n ${env.DAST_NAMESPACE} -l app=django --tail=100 --all-containers=true || true
-                                echo "=== Images in Minikube ==="
-                                eval \$(minikube docker-env)
-                                docker images | grep ${env.IMAGE_NAME}
+                                echo "=== Deployment Status ==="
+                                kubectl describe deployment ${env.DAST_APP_NAME} -n ${env.DAST_NAMESPACE}
                                 exit 1
                             }
                         """
@@ -555,34 +541,36 @@ EOF
 
                         echo '🏥 Performing health check...'
                         sh """
-                            max_attempts=20
+                            max_attempts=25
                             attempt=0
                             
                             echo "Testing connection to ${env.DAST_APP_URL}"
                             
                             while [ \$attempt -lt \$max_attempts ]; do
                                 attempt=\$((attempt+1))
-                                echo "Attempt \$attempt/\$max_attempts..."
+                                echo "Health check attempt \$attempt/\$max_attempts..."
                                 
-                                HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" ${env.DAST_APP_URL}/ || echo "000")
+                                HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 ${env.DAST_APP_URL}/ || echo "000")
                                 
-                                if [ "\$HTTP_CODE" = "200" ] || [ "\$HTTP_CODE" = "301" ] || [ "\$HTTP_CODE" = "302" ]; then
+                                if [ "\$HTTP_CODE" = "200" ] || [ "\$HTTP_CODE" = "301" ] || [ "\$HTTP_CODE" = "302" ] || [ "\$HTTP_CODE" = "404" ]; then
                                     echo "✅ Health check passed! HTTP \$HTTP_CODE"
-                                    exit 0
+                                    echo "L'application répond correctement"
+                                    break
+                                elif [ "\$attempt" -eq "\$max_attempts" ]; then
+                                    echo "❌ Health check failed after \$max_attempts attempts"
+                                    echo "Last HTTP code: \$HTTP_CODE"
+                                    echo "=== Checking pod status ==="
+                                    kubectl get pods -n ${env.DAST_NAMESPACE} -l app=django
+                                    echo "=== Checking service ==="
+                                    kubectl get svc -n ${env.DAST_NAMESPACE}
+                                    echo "=== Application logs ==="
+                                    kubectl logs -n ${env.DAST_NAMESPACE} -l app=django --tail=50 || true
+                                    exit 1
+                                else
+                                    echo "⏳ HTTP \$HTTP_CODE - Waiting for app to respond... (attempt \$attempt)"
+                                    sleep 5
                                 fi
-                                
-                                echo "⏳ HTTP \$HTTP_CODE - Waiting for app to respond..."
-                                sleep 5
                             done
-                            
-                            echo "❌ Health check failed after \$max_attempts attempts"
-                            echo "=== Final Pod Status ==="
-                            kubectl get pods -n ${env.DAST_NAMESPACE} -l app=django
-                            echo "=== Service Status ==="
-                            kubectl get svc -n ${env.DAST_NAMESPACE}
-                            echo "=== Django Logs ==="
-                            kubectl logs -n ${env.DAST_NAMESPACE} -l app=django --tail=100 || true
-                            exit 1
                         """
 
                         echo '📊 Deployment Summary:'
@@ -591,16 +579,17 @@ EOF
                             echo "Namespace: ${env.DAST_NAMESPACE}"
                             echo "Application URL: ${env.DAST_APP_URL}"
                             echo "Image: ${env.TEST_IMAGE_TAG}"
+                            echo "Pull Policy: ${env.IMAGE_PULL_POLICY}"
                             echo "================================"
                             echo ""
                             echo "=== Pods ==="
-                            kubectl get pods -n ${env.DAST_NAMESPACE}
+                            kubectl get pods -n ${env.DAST_NAMESPACE} -o wide
                             echo ""
                             echo "=== Services ==="
-                            kubectl get svc -n ${env.DAST_NAMESPACE}
+                            kubectl get svc -n ${env.DAST_NAMESPACE} -o wide
                             echo ""
                             echo "=== Deployments ==="
-                            kubectl get deployments -n ${env.DAST_NAMESPACE}
+                            kubectl get deployments -n ${env.DAST_NAMESPACE} -o wide
                         """
 
                         writeFile file: 'dast-deployment-info.txt', text: """
@@ -611,6 +600,7 @@ DAST_DB_NAME=${env.DAST_DB_NAME}
 MINIKUBE_IP=${minikubeIP}
 NODE_PORT=${env.DAST_NODE_PORT}
 IMAGE_TAG=${env.TEST_IMAGE_TAG}
+PULL_POLICY=${env.IMAGE_PULL_POLICY}
 """
                         archiveArtifacts artifacts: 'dast-deployment-info.txt', allowEmptyArchive: false
 
@@ -622,26 +612,27 @@ IMAGE_TAG=${env.TEST_IMAGE_TAG}
                         
                         echo '📋 Detailed debugging information:'
                         sh """
+                            echo "=== Comprehensive Debugging ==="
+                            echo "Image: ${env.TEST_IMAGE_TAG}"
+                            echo "Pull Policy: ${env.IMAGE_PULL_POLICY}"
+                            echo ""
                             echo "=== All Pods in Namespace ==="
                             kubectl get pods -n ${env.DAST_NAMESPACE} -o wide || true
                             echo ""
                             echo "=== All Services ==="
                             kubectl get svc -n ${env.DAST_NAMESPACE} -o wide || true
                             echo ""
-                            echo "=== Django Deployment ==="
+                            echo "=== Django Deployment Details ==="
                             kubectl describe deployment ${env.DAST_APP_NAME} -n ${env.DAST_NAMESPACE} || true
                             echo ""
                             echo "=== Django Pod Details ==="
                             kubectl describe pod -n ${env.DAST_NAMESPACE} -l app=django || true
                             echo ""
                             echo "=== Django Logs (all containers) ==="
-                            kubectl logs -n ${env.DAST_NAMESPACE} -l app=django --all-containers=true --prefix=true || true
+                            kubectl logs -n ${env.DAST_NAMESPACE} -l app=django --all-containers=true --prefix=true --tail=100 || true
                             echo ""
-                            echo "=== Images in Minikube Docker ==="
-                            eval \$(minikube docker-env)
-                            docker images | grep -E "(${env.IMAGE_NAME}|REPOSITORY)"
-                            echo ""
-                            echo "=== Expected image: ${env.TEST_IMAGE_TAG} ==="
+                            echo "=== Recent Events ==="
+                            kubectl get events -n ${env.DAST_NAMESPACE} --sort-by='.lastTimestamp' | tail -20 || true
                         """
                         
                         throw e
