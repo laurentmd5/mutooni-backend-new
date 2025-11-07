@@ -247,14 +247,31 @@ pipeline {
 
                         echo "📥 Loading Docker image into Minikube..."
                         sh """
-                            minikube image load ${env.TEST_IMAGE_TAG} || {
-                                echo "⚠️  Fallback to docker save/load method..."
-                                eval \$(minikube docker-env)
-                                docker save ${env.TEST_IMAGE_TAG} | docker load
-                            }
-                            
+                            # Passer au contexte Docker de Minikube
                             eval \$(minikube docker-env)
-                            docker images | grep ${env.IMAGE_NAME} || (echo "❌ Image not found in Minikube" && exit 1)
+                            
+                            # Nettoyer les anciennes images
+                            echo "🧹 Cleaning old images..."
+                            docker images ${env.IMAGE_NAME} -q | xargs -r docker rmi -f || true
+                            
+                            # Charger la nouvelle image depuis le daemon Docker local
+                            echo "📦 Loading image ${env.TEST_IMAGE_TAG}..."
+                            
+                            # Méthode 1: Via docker save/load (plus fiable)
+                            docker save ${env.TEST_IMAGE_TAG} | docker load
+                            
+                            # Vérifier que l'image est bien présente
+                            echo "🔍 Verifying loaded image..."
+                            docker images
+                            
+                            if ! docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "^${env.TEST_IMAGE_TAG}\$"; then
+                                echo "❌ Image ${env.TEST_IMAGE_TAG} not found in Minikube Docker"
+                                echo "Available images:"
+                                docker images
+                                exit 1
+                            fi
+                            
+                            echo "✅ Image ${env.TEST_IMAGE_TAG} successfully loaded"
                         """
                         echo "✅ Image loaded successfully into Minikube"
 
@@ -497,6 +514,16 @@ EOF
                                         exit 1
                                     fi
                                     
+                                    # Vérifier s'il y a une erreur d'image
+                                    if kubectl get pods -n ${env.DAST_NAMESPACE} -l app=django -o jsonpath="{.items[0].status.containerStatuses[*].state.waiting.reason}" 2>/dev/null | grep -q "ErrImageNeverPull"; then
+                                        echo "❌ ErrImageNeverPull detected"
+                                        echo "Image expected: ${env.TEST_IMAGE_TAG}"
+                                        echo "Images in Minikube:"
+                                        eval \$(minikube docker-env)
+                                        docker images | grep ${env.IMAGE_NAME}
+                                        exit 1
+                                    fi
+                                    
                                     sleep 5
                                 done
                             ' || {
@@ -509,6 +536,9 @@ EOF
                                 kubectl describe pod -n ${env.DAST_NAMESPACE} -l app=django
                                 echo "=== Pod Logs ==="
                                 kubectl logs -n ${env.DAST_NAMESPACE} -l app=django --tail=100 --all-containers=true || true
+                                echo "=== Images in Minikube ==="
+                                eval \$(minikube docker-env)
+                                docker images | grep ${env.IMAGE_NAME}
                                 exit 1
                             }
                         """
@@ -560,6 +590,7 @@ EOF
                             echo "================================"
                             echo "Namespace: ${env.DAST_NAMESPACE}"
                             echo "Application URL: ${env.DAST_APP_URL}"
+                            echo "Image: ${env.TEST_IMAGE_TAG}"
                             echo "================================"
                             echo ""
                             echo "=== Pods ==="
@@ -579,6 +610,7 @@ DAST_APP_NAME=${env.DAST_APP_NAME}
 DAST_DB_NAME=${env.DAST_DB_NAME}
 MINIKUBE_IP=${minikubeIP}
 NODE_PORT=${env.DAST_NODE_PORT}
+IMAGE_TAG=${env.TEST_IMAGE_TAG}
 """
                         archiveArtifacts artifacts: 'dast-deployment-info.txt', allowEmptyArchive: false
 
@@ -605,18 +637,11 @@ NODE_PORT=${env.DAST_NODE_PORT}
                             echo "=== Django Logs (all containers) ==="
                             kubectl logs -n ${env.DAST_NAMESPACE} -l app=django --all-containers=true --prefix=true || true
                             echo ""
-                            echo "=== PostgreSQL Pod ==="
-                            kubectl describe pod -n ${env.DAST_NAMESPACE} -l app=postgres || true
-                            echo ""
-                            echo "=== PostgreSQL Logs ==="
-                            kubectl logs -n ${env.DAST_NAMESPACE} -l app=postgres --tail=50 || true
-                            echo ""
-                            echo "=== Recent Events ==="
-                            kubectl get events -n ${env.DAST_NAMESPACE} --sort-by='.lastTimestamp' || true
-                            echo ""
-                            echo "=== Minikube Docker Images ==="
+                            echo "=== Images in Minikube Docker ==="
                             eval \$(minikube docker-env)
-                            docker images | grep ${env.IMAGE_NAME} || echo "Image not found in Minikube"
+                            docker images | grep -E "(${env.IMAGE_NAME}|REPOSITORY)"
+                            echo ""
+                            echo "=== Expected image: ${env.TEST_IMAGE_TAG} ==="
                         """
                         
                         throw e
