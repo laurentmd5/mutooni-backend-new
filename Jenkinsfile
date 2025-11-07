@@ -2,24 +2,22 @@ pipeline {
     agent any
 
     environment {
-        // --- Configuration de base ---
         GH_REPO = 'laurentmd5/mutooni-backend-new'
         GITHUB_CREDENTIALS_ID = 'my-token-jenkins'
         IMAGE_NAME = "mon-app-django"
         DOCKER_REGISTRY = "docker.io/laurentmd5"
         DOCKER_REGISTRY_CREDENTIALS_ID = 'docker-hub-creds'
-        
-        // --- Variables pour les tests ---
+
         TEST_DB_CONTAINER_NAME = "test-db-django-${BUILD_NUMBER}"
         TEST_IMAGE_TAG = "${env.DOCKER_REGISTRY}/${env.IMAGE_NAME}:${BUILD_NUMBER}"
         DAST_NAMESPACE = "dast-test-${BUILD_NUMBER}"
         DAST_APP_NAME = "django-app-dast"
         DAST_DB_NAME = "postgres-dast"
         DAST_SERVICE_PORT = "8000"
-        DAST_NODE_PORT = "30080"  // Port accessible depuis l'hôte
+        DAST_NODE_PORT = "30080"
         DAST_TIMEOUT = "180"
     }
-    
+
     options {
         skipDefaultCheckout()
         timestamps()
@@ -32,12 +30,12 @@ pipeline {
                 echo '📦 Cloning repository...'
                 cleanWs()
                 git branch: 'main', credentialsId: env.GITHUB_CREDENTIALS_ID, url: "https://github.com/${env.GH_REPO}.git"
-                
+
                 script {
                     def commitHash = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
                     def commitAuthor = sh(script: 'git log -1 --pretty=format:%an', returnStdout: true).trim()
                     def commitMessage = sh(script: 'git log -1 --pretty=format:%s', returnStdout: true).trim()
-                    
+
                     echo "✅ Commit: ${commitHash} par ${commitAuthor}"
                     echo "   Message: ${commitMessage}"
                 }
@@ -61,63 +59,37 @@ pipeline {
         stage('Analyse Qualité & Sécurité en parallèle') {
             parallel {
                 stage('Linting & Qualité du Code (Flake8)') {
-                    agent any
                     steps {
                         script {
                             echo '🔍 Checking code style with flake8 (inside Docker)...'
-                            // Utilise docker run avec --user root pour avoir les permissions
                             sh """
-                                docker run --rm \
-                                    --user root \
-                                    -v \$(pwd):/workspace \
-                                    -w /workspace \
-                                    python:3.11-slim \
-                                    bash -c '
-                                        pip install --upgrade pip --quiet && \
-                                        pip install flake8 flake8-html --quiet && \
-                                        echo "📏 Running Flake8 - Critical Errors (E9, F63, F7, F82)..." && \
-                                        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics || echo "⚠️  Erreurs critiques détectées" && \
-                                        echo "📊 Running Flake8 - Quality Checks & Report..." && \
-                                        flake8 . \
-                                            --count \
-                                            --exit-zero \
-                                            --max-complexity=10 \
-                                            --max-line-length=120 \
-                                            --statistics \
-                                            --format=html \
-                                            --htmldir=flake8-report
-                                    '
+                                docker run --rm --user root -v \$(pwd):/workspace -w /workspace python:3.11-slim bash -c '
+                                    pip install --upgrade pip --quiet && \
+                                    pip install flake8 flake8-html --quiet && \
+                                    flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics || echo "⚠️  Erreurs critiques détectées" && \
+                                    flake8 . --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics --format=html --htmldir=flake8-report
+                                '
                             """
                             echo '✅ Linting completed'
                         }
                     }
                     post {
-                        always {
-                            archiveArtifacts artifacts: 'flake8-report/**', allowEmptyArchive: true
-                        }
+                        always { archiveArtifacts artifacts: 'flake8-report/**', allowEmptyArchive: true }
                     }
                 }
 
                 stage('Sécurité Statique du Code (SAST - Python)') {
-                    agent any
                     steps {
                         script {
                             echo '🛡️  Running SAST with Bandit and Semgrep (inside Docker)...'
                             sh """
-                                docker run --rm \
-                                    --user root \
-                                    -v \$(pwd):/workspace \
-                                    -w /workspace \
-                                    python:3.11-slim \
-                                    bash -c '
-                                        pip install --upgrade pip --quiet && \
-                                        pip install bandit semgrep --quiet && \
-                                        echo "🔍 Running Bandit..." && \
-                                        bandit -r . -o bandit_report.json -f json --exit-zero && \
-                                        bandit -r . -o bandit_report.html -f html --exit-zero && \
-                                        echo "🔍 Running Semgrep..." && \
-                                        semgrep --config="p/python" --config="p/django" --json -o semgrep_report.json . --error || echo "⚠️  Semgrep a trouvé des problèmes"
-                                    '
+                                docker run --rm --user root -v \$(pwd):/workspace -w /workspace python:3.11-slim bash -c '
+                                    pip install --upgrade pip --quiet && \
+                                    pip install bandit semgrep --quiet && \
+                                    bandit -r . -o bandit_report.json -f json --exit-zero && \
+                                    bandit -r . -o bandit_report.html -f html --exit-zero && \
+                                    semgrep --config="p/python" --config="p/django" --json -o semgrep_report.json . --error || echo "⚠️  Semgrep a trouvé des problèmes"
+                                '
                             """
                             echo '✅ SAST analysis completed'
                         }
@@ -138,21 +110,12 @@ pipeline {
                 script {
                     def trivyScaResult = sh(
                         script: """
-                            docker run --rm \
-                                -v \$(pwd):/src \
-                                aquasec/trivy fs \
-                                --exit-code 1 \
-                                --severity HIGH,CRITICAL \
-                                --ignore-unfixed \
-                                --format json \
-                                -o /src/trivy_sca_report.json \
-                                .
-                        """,
-                        returnStatus: true
+                            docker run --rm -v \$(pwd):/src aquasec/trivy fs \
+                                --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed \
+                                --format json -o /src/trivy_sca_report.json .
+                        """, returnStatus: true
                     )
-                    
                     archiveArtifacts artifacts: 'trivy_sca_report.json', allowEmptyArchive: true
-                    
                     if (trivyScaResult != 0) {
                         currentBuild.result = 'UNSTABLE'
                         echo '⚠️  Trivy a trouvé des vulnérabilités critiques/élevées dans les dépendances !'
@@ -167,19 +130,13 @@ pipeline {
             steps {
                 echo "🐳 Building Docker image: ${env.TEST_IMAGE_TAG}"
                 script {
-                    withCredentials([usernamePassword(
-                        credentialsId: env.DOCKER_REGISTRY_CREDENTIALS_ID,
-                        usernameVariable: 'DOCKER_USERNAME',
-                        passwordVariable: 'DOCKER_PASSWORD'
-                    )]) {
+                    withCredentials([usernamePassword(credentialsId: env.DOCKER_REGISTRY_CREDENTIALS_ID, usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
                         sh "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin ${env.DOCKER_REGISTRY}"
                         sh """
-                            docker build \
-                                --build-arg BUILD_DATE=\$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
-                                --build-arg VCS_REF=\$(git rev-parse --short HEAD) \
-                                --build-arg BUILD_NUMBER=${BUILD_NUMBER} \
-                                --tag ${env.TEST_IMAGE_TAG} \
-                                .
+                            docker build --build-arg BUILD_DATE=\$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
+                                         --build-arg VCS_REF=\$(git rev-parse --short HEAD) \
+                                         --build-arg BUILD_NUMBER=${BUILD_NUMBER} \
+                                         --tag ${env.TEST_IMAGE_TAG} .
                         """
                         sh "docker push ${env.TEST_IMAGE_TAG}"
                         echo "✅ Image built and pushed: ${env.TEST_IMAGE_TAG}"
@@ -194,19 +151,11 @@ pipeline {
                 script {
                     def trivyImageResult = sh(
                         script: """
-                            docker run --rm \
-                                -v /var/run/docker.sock:/var/run/docker.sock \
+                            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
                                 -v /var/lib/jenkins/trivy-cache:/root/.cache/ \
                                 -e TRIVY_DB_REPOSITORY=public.ecr.aws/aquasecurity/trivy-db \
-                                aquasec/trivy:latest image \
-                                --timeout 10m \
-                                --exit-code 1 \
-                                --severity CRITICAL \
-                                --ignore-unfixed \
-                                --no-progress \
-                                ${env.TEST_IMAGE_TAG}
-                        """,
-                        returnStatus: true
+                                aquasec/trivy:latest image --timeout 10m --exit-code 1 --severity CRITICAL --ignore-unfixed --no-progress ${env.TEST_IMAGE_TAG}
+                        """, returnStatus: true
                     )
                     if (trivyImageResult != 0) {
                         error '❌ Trivy a trouvé des vulnérabilités CRITIQUES dans l\'image Docker.'
@@ -214,18 +163,12 @@ pipeline {
                         echo '✅ Aucune vulnérabilité CRITIQUE trouvée dans l\'image.'
                     }
                     sh """
-                        docker run --rm \
-                            -v /var/run/docker.sock:/var/run/docker.sock \
+                        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
                             -v /var/lib/jenkins/trivy-cache:/root/.cache/ \
                             -v \$(pwd):/scan \
                             -e TRIVY_DB_REPOSITORY=public.ecr.aws/aquasecurity/trivy-db \
-                            aquasec/trivy:latest image \
-                            --timeout 10m \
-                            --format json \
-                            --no-progress \
-                            --severity HIGH,CRITICAL \
-                            -o /scan/trivy_image_report.json \
-                            ${env.TEST_IMAGE_TAG}
+                            aquasec/trivy:latest image --timeout 10m --format json --no-progress --severity HIGH,CRITICAL \
+                            -o /scan/trivy_image_report.json ${env.TEST_IMAGE_TAG}
                     """
                     archiveArtifacts artifacts: 'trivy_image_report.json', allowEmptyArchive: true
                 }
@@ -250,15 +193,12 @@ pipeline {
                                 docker.io/library/postgres:13
                         """
                         echo '⏳ Waiting for database to be healthy...'
-                        sh """
-                            timeout 30s bash -c 'until docker inspect --format="{{.State.Health.Status}}" ${env.TEST_DB_CONTAINER_NAME} | grep -q "healthy"; do sleep 1; done'
-                        """
+                        sh "timeout 30s bash -c 'until docker inspect --format=\"{{.State.Health.Status}}\" ${env.TEST_DB_CONTAINER_NAME} | grep -q \"healthy\"; do sleep 1; done'"
                         echo '✅ Database is healthy.'
-                        
+
                         sh 'mkdir -p test-reports'
                         sh """
-                            docker run --rm \
-                                --link ${env.TEST_DB_CONTAINER_NAME}:db \
+                            docker run --rm --link ${env.TEST_DB_CONTAINER_NAME}:db \
                                 -v \$(pwd)/mysite/core/firebase/serviceAccountKey.json:/app/core/firebase/serviceAccountKey.json:ro \
                                 -v \$(pwd)/test-reports:/app/test-reports \
                                 -e DB_NAME=mysite_test \
@@ -283,9 +223,7 @@ pipeline {
                 }
             }
             post {
-                always {
-                    junit testResults: 'test-reports/**/*.xml', allowEmptyResults: true
-                }
+                always { junit testResults: 'test-reports/**/*.xml', allowEmptyResults: true }
             }
         }
 
@@ -294,297 +232,207 @@ pipeline {
                 echo '🚀 Deploying application to Kubernetes for DAST testing...'
                 script {
                     try {
-                        // Vérification de l'accès au cluster via kubectl
                         echo '🔍 Checking Kubernetes cluster connectivity...'
-                        sh """
-                            kubectl cluster-info || exit 1
-                            kubectl get nodes || exit 1
-                        """
+                        sh "kubectl cluster-info || exit 1; kubectl get nodes || exit 1"
                         echo "✅ Kubernetes cluster is reachable"
 
-                        // Création du namespace temporaire
                         echo "📦 Creating temporary namespace: ${env.DAST_NAMESPACE}"
-                        sh """
-                            kubectl create namespace ${env.DAST_NAMESPACE} || true
-                            kubectl label namespace ${env.DAST_NAMESPACE} jenkins-build=${BUILD_NUMBER} || true
-                        """
+                        sh "kubectl create namespace ${env.DAST_NAMESPACE} || true; kubectl label namespace ${env.DAST_NAMESPACE} jenkins-build=${BUILD_NUMBER} || true"
 
-                        // Vérification que l'image Docker est disponible
                         echo "📥 Ensure Docker image is available for Kubernetes"
-                        sh """
-                            docker save ${env.TEST_IMAGE_TAG} | docker load
-                        """
+                        sh "docker save ${env.TEST_IMAGE_TAG} | docker load"
 
-                        // Déploiement de PostgreSQL
+                        // Déploiement PostgreSQL
                         echo '🗄️  Deploying PostgreSQL database...'
                         sh """
                             cat <<EOF | kubectl apply -n ${env.DAST_NAMESPACE} -f -
-        apiVersion: v1
-        kind: Secret
-        metadata:
-        name: postgres-secret
-        type: Opaque
-        stringData:
-        POSTGRES_DB: mysite_dast
-        POSTGRES_USER: postgres
-        POSTGRES_PASSWORD: postgres_dast_secure
-        ---
-        apiVersion: v1
-        kind: Service
-        metadata:
-        name: ${env.DAST_DB_NAME}
-        labels:
-            app: postgres
-        spec:
-        ports:
-            - port: 5432
-            targetPort: 5432
-        selector:
-            app: postgres
-        ---
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-        name: ${env.DAST_DB_NAME}
-        labels:
-            app: postgres
-        spec:
-        replicas: 1
-        selector:
-            matchLabels:
-            app: postgres
-        template:
-            metadata:
-            labels:
-                app: postgres
-            spec:
-            containers:
-                - name: postgres
-                image: postgres:13
-                ports:
-                    - containerPort: 5432
-                envFrom:
-                    - secretRef:
-                        name: postgres-secret
-                readinessProbe:
-                    exec:
-                    command: ["pg_isready", "-U", "postgres"]
-                    initialDelaySeconds: 10
-                    periodSeconds: 5
-                    timeoutSeconds: 3
-                livenessProbe:
-                    exec:
-                    command: ["pg_isready", "-U", "postgres"]
-                    initialDelaySeconds: 30
-                    periodSeconds: 10
-                    timeoutSeconds: 3
-                resources:
-                    requests:
-                    memory: "256Mi"
-                    cpu: "250m"
-                    limits:
-                    memory: "512Mi"
-                    cpu: "500m"
-        EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+type: Opaque
+stringData:
+  POSTGRES_DB: mysite_dast
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres_dast_secure
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${env.DAST_DB_NAME}
+  labels:
+    app: postgres
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${env.DAST_DB_NAME}
+  labels:
+    app: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:13
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: postgres-secret
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+EOF
                         """
 
-                        // Attente de la disponibilité de PostgreSQL
                         echo '⏳ Waiting for PostgreSQL to be ready...'
-                        sh """
-                            kubectl wait --for=condition=available --timeout=${env.DAST_TIMEOUT}s \
-                                deployment/${env.DAST_DB_NAME} -n ${env.DAST_NAMESPACE}
-                        """
+                        sh "kubectl wait --for=condition=available --timeout=${env.DAST_TIMEOUT}s deployment/${env.DAST_DB_NAME} -n ${env.DAST_NAMESPACE}"
 
-                        // Déploiement de l'application Django
+                        // Déploiement Django
                         echo '🐍 Deploying Django application...'
-                        withCredentials([
-                            string(credentialsId: 'DJANGO_SECRET_KEY', variable: 'DJANGO_SECRET')
-                        ]) {
+                        withCredentials([string(credentialsId: 'DJANGO_SECRET_KEY', variable: 'DJANGO_SECRET')]) {
                             sh """
-                                cat <<EOF | kubectl apply -n ${env.DAST_NAMESPACE} -f -
-        apiVersion: v1
-        kind: Secret
-        metadata:
-        name: django-secret
-        type: Opaque
-        stringData:
-        SECRET_KEY: \${DJANGO_SECRET}
-        DB_NAME: mysite_dast
-        DB_USER: postgres
-        DB_PASSWORD: postgres_dast_secure
-        DB_HOST: ${env.DAST_DB_NAME}
-        DB_PORT: "5432"
-        ---
-        apiVersion: v1
-        kind: Service
-        metadata:
-        name: ${env.DAST_APP_NAME}
-        labels:
-            app: django
-        spec:
-        type: NodePort
-        ports:
-            - port: ${env.DAST_SERVICE_PORT}
-            targetPort: 8000
-            nodePort: ${env.DAST_NODE_PORT}
-            protocol: TCP
-        selector:
-            app: django
-        ---
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-        name: ${env.DAST_APP_NAME}
-        labels:
-            app: django
-        spec:
-        replicas: 1
-        selector:
-            matchLabels:
-            app: django
-        template:
-            metadata:
-            labels:
-                app: django
-            spec:
-            initContainers:
-                - name: wait-for-db
-                image: busybox:1.36
-                command: ["sh", "-c", "until nc -z ${env.DAST_DB_NAME} 5432; do echo 'Waiting for database...'; sleep 2; done; echo 'Database is ready!'"]
-                - name: django-migrate
-                image: ${env.TEST_IMAGE_TAG}
-                command: ["/bin/sh", "-c"]
-                args:
-                    - |
-                    python manage.py migrate --noinput
-                envFrom:
-                    - secretRef:
-                        name: django-secret
-                env:
-                    - name: DJANGO_SETTINGS_MODULE
-                    value: "mysite.settings"
-            containers:
-                - name: django
-                image: ${env.TEST_IMAGE_TAG}
-                imagePullPolicy: Never
-                ports:
-                    - containerPort: 8000
-                envFrom:
-                    - secretRef:
-                        name: django-secret
-                env:
-                    - name: DJANGO_SETTINGS_MODULE
-                    value: "mysite.settings"
-                readinessProbe:
-                    httpGet:
-                    path: /
-                    port: 8000
-                    initialDelaySeconds: 15
-                    periodSeconds: 5
-                    timeoutSeconds: 3
-                    failureThreshold: 3
-                livenessProbe:
-                    httpGet:
-                    path: /
-                    port: 8000
-                    initialDelaySeconds: 30
-                    periodSeconds: 10
-                    timeoutSeconds: 5
-                    failureThreshold: 3
-                resources:
-                    requests:
-                    memory: "512Mi"
-                    cpu: "500m"
-                    limits:
-                    memory: "1Gi"
-                    cpu: "1000m"
-        EOF
+cat <<EOF | kubectl apply -n ${env.DAST_NAMESPACE} -f -
+apiVersion: v1
+kind: Secret
+metadata:
+  name: django-secret
+type: Opaque
+stringData:
+  SECRET_KEY: \${DJANGO_SECRET}
+  DB_NAME: mysite_dast
+  DB_USER: postgres
+  DB_PASSWORD: postgres_dast_secure
+  DB_HOST: ${env.DAST_DB_NAME}
+  DB_PORT: "5432"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${env.DAST_APP_NAME}
+  labels:
+    app: django
+spec:
+  type: NodePort
+  ports:
+    - port: ${env.DAST_SERVICE_PORT}
+      targetPort: 8000
+      nodePort: ${env.DAST_NODE_PORT}
+      protocol: TCP
+  selector:
+    app: django
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${env.DAST_APP_NAME}
+  labels:
+    app: django
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: django
+  template:
+    metadata:
+      labels:
+        app: django
+    spec:
+      initContainers:
+        - name: wait-for-db
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z ${env.DAST_DB_NAME} 5432; do echo 'Waiting for database...'; sleep 2; done; echo 'Database is ready!'"]
+        - name: django-migrate
+          image: ${env.TEST_IMAGE_TAG}
+          command: ["/bin/sh", "-c"]
+          args:
+            - python manage.py migrate --noinput
+          envFrom:
+            - secretRef:
+                name: django-secret
+          env:
+            - name: DJANGO_SETTINGS_MODULE
+              value: "mysite.settings"
+      containers:
+        - name: django
+          image: ${env.TEST_IMAGE_TAG}
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: django-secret
+          env:
+            - name: DJANGO_SETTINGS_MODULE
+              value: "mysite.settings"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+EOF
                             """
                         }
 
-                        // Attente de la disponibilité de l'application
                         echo '⏳ Waiting for Django application to be ready...'
-                        sh """
-                            kubectl wait --for=condition=available --timeout=${env.DAST_TIMEOUT}s \
-                                deployment/${env.DAST_APP_NAME} -n ${env.DAST_NAMESPACE}
-                        """
+                        sh "kubectl wait --for=condition=available --timeout=${env.DAST_TIMEOUT}s deployment/${env.DAST_APP_NAME} -n ${env.DAST_NAMESPACE}"
 
-                        // Récupération de l'URL via NodePort
-                        echo '🌐 Getting application URL...'
                         def nodePort = sh(script: "kubectl get svc ${env.DAST_APP_NAME} -n ${env.DAST_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'", returnStdout: true).trim()
                         env.DAST_APP_URL = "http://127.0.0.1:${nodePort}"
                         echo "✅ Application deployed and accessible at: ${env.DAST_APP_URL}"
 
-                        // Vérification de santé
-                        echo '🏥 Performing health check...'
-                        def healthCheckResult = sh(
-                            script: """
-                                max_attempts=30
-                                attempt=0
-                                while [ \$attempt -lt \$max_attempts ]; do
-                                    if curl -f -s -o /dev/null -w "%{http_code}" ${env.DAST_APP_URL}/ | grep -q "200\\|301\\|302"; then
-                                        echo "✅ Health check passed"
-                                        exit 0
-                                    fi
-                                    echo "⏳ Attempt \$((attempt+1))/\$max_attempts - Waiting for app to respond..."
-                                    sleep 10
-                                    attempt=\$((attempt+1))
-                                done
-                                echo "❌ Health check failed after \$max_attempts attempts"
-                                exit 1
-                            """,
-                            returnStatus: true
-                        )
-                        if (healthCheckResult != 0) {
-                            echo '📋 Django application logs:'
-                            sh "kubectl logs -n ${env.DAST_NAMESPACE} -l app=django --tail=50 || true"
-                            error '❌ Application health check failed'
-                        }
-
-                        // Affichage des infos de déploiement
-                        echo '📊 Deployment information:'
-                        sh """
-                            echo "Namespace: ${env.DAST_NAMESPACE}"
-                            echo "Application URL: ${env.DAST_APP_URL}"
-                            echo ""
-                            echo "Pods status:"
-                            kubectl get pods -n ${env.DAST_NAMESPACE}
-                            echo ""
-                            echo "Services:"
-                            kubectl get svc -n ${env.DAST_NAMESPACE}
-                        """
-
-                        // Sauvegarde pour les stages suivants
-                        writeFile file: 'dast-deployment-info.txt', text: """
-        DAST_NAMESPACE=${env.DAST_NAMESPACE}
-        DAST_APP_URL=${env.DAST_APP_URL}
-        DAST_APP_NAME=${env.DAST_APP_NAME}
-        DAST_DB_NAME=${env.DAST_DB_NAME}
-        """
-                        archiveArtifacts artifacts: 'dast-deployment-info.txt', allowEmptyArchive: false
-
                         echo '✅ DAST deployment completed successfully!'
-
                     } catch (Exception e) {
                         currentBuild.result = 'FAILURE'
                         echo "❌ DAST deployment failed: ${e.message}"
-
-                        // Logs de debug
-                        echo '📋 Debugging information:'
-                        sh """
-                            echo "=== Pods Status ==="
-                            kubectl get pods -n ${env.DAST_NAMESPACE} || true
-                            echo ""
-                            echo "=== Django Logs ==="
-                            kubectl logs -n ${env.DAST_NAMESPACE} -l app=django --tail=100 || true
-                            echo ""
-                            echo "=== PostgreSQL Logs ==="
-                            kubectl logs -n ${env.DAST_NAMESPACE} -l app=postgres --tail=50 || true
-                            echo ""
-                            echo "=== Events ==="
-                            kubectl get events -n ${env.DAST_NAMESPACE} --sort-by='.lastTimestamp' || true
-                        """
-
                         throw e
                     }
                 }
@@ -592,17 +440,11 @@ pipeline {
             post {
                 failure {
                     echo '🧹 Cleaning up failed DAST deployment...'
-                    script {
-                        sh """
-                            kubectl delete namespace ${env.DAST_NAMESPACE} --wait=false || true
-                        """
-                    }
+                    sh "kubectl delete namespace ${env.DAST_NAMESPACE} --wait=false || true"
                 }
             }
         }
-
     }
-
 
     post {
         always {
@@ -612,14 +454,8 @@ pipeline {
             sh "docker rm ${env.TEST_DB_CONTAINER_NAME} || true"
             cleanWs()
         }
-        success {
-            echo '✅ Pipeline a réussi !'
-        }
-        failure {
-            echo '❌ Pipeline a échoué !'
-        }
-        unstable {
-            echo '⚠️ Pipeline instable (problèmes de qualité/sécurité trouvés).'
-        }
+        success { echo '✅ Pipeline a réussi !' }
+        failure { echo '❌ Pipeline a échoué !' }
+        unstable { echo '⚠️ Pipeline instable (problèmes de qualité/sécurité trouvés).' }
     }
 }
