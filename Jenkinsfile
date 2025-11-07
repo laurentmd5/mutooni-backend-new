@@ -291,40 +291,30 @@ pipeline {
 
         stage('Déploiement Temporaire pour DAST') {
             steps {
-                echo '🚀 Deploying application to Minikube for DAST testing...'
+                echo '🚀 Deploying application to Kubernetes for DAST testing...'
                 script {
                     try {
-                        // Vérification de l'environnement Minikube
-                        echo '🔍 Checking Minikube status...'
-                        def minikubeStatus = sh(
-                            script: 'minikube status --format="{{.Host}}" || echo "stopped"',
-                            returnStdout: true
-                        ).trim()
-                        
-                        if (minikubeStatus != 'Running') {
-                            error '❌ Minikube n\'est pas en cours d\'exécution. Veuillez démarrer Minikube.'
-                        }
-                        
+                        // Vérification de l'accès au cluster via kubectl
+                        echo '🔍 Checking Kubernetes cluster connectivity...'
+                        sh """
+                            kubectl cluster-info || exit 1
+                            kubectl get nodes || exit 1
+                        """
+                        echo "✅ Kubernetes cluster is reachable"
+
                         // Création du namespace temporaire
                         echo "📦 Creating temporary namespace: ${env.DAST_NAMESPACE}"
                         sh """
                             kubectl create namespace ${env.DAST_NAMESPACE} || true
                             kubectl label namespace ${env.DAST_NAMESPACE} jenkins-build=${BUILD_NUMBER} || true
                         """
-                        
-                        // Chargement de l'image dans Minikube
-                        echo "📥 Loading Docker image into Minikube..."
+
+                        // Vérification que l'image Docker est disponible (Jenkins doit avoir accès)
+                        echo "📥 Ensure Docker image is available for Kubernetes"
                         sh """
-                            minikube image load ${env.TEST_IMAGE_TAG} --daemon=false || \
-                            docker save ${env.TEST_IMAGE_TAG} | (eval \$(minikube docker-env) && docker load)
+                            docker save ${env.TEST_IMAGE_TAG} | docker load
                         """
-                        
-                        // Vérification de l'image dans Minikube
-                        sh """
-                            minikube ssh "docker images | grep ${env.IMAGE_NAME}" || \
-                            echo "⚠️  Warning: Image may not be loaded properly"
-                        """
-                        
+
                         // Déploiement de PostgreSQL
                         echo '🗄️  Deploying PostgreSQL database...'
                         sh """
@@ -378,19 +368,13 @@ pipeline {
                     name: postgres-secret
                 readinessProbe:
                 exec:
-                    command:
-                    - pg_isready
-                    - -U
-                    - postgres
+                    command: ["pg_isready", "-U", "postgres"]
                 initialDelaySeconds: 10
                 periodSeconds: 5
                 timeoutSeconds: 3
                 livenessProbe:
                 exec:
-                    command:
-                    - pg_isready
-                    - -U
-                    - postgres
+                    command: ["pg_isready", "-U", "postgres"]
                 initialDelaySeconds: 30
                 periodSeconds: 10
                 timeoutSeconds: 3
@@ -403,14 +387,14 @@ pipeline {
                     cpu: "500m"
         EOF
                         """
-                        
+
                         // Attente de la disponibilité de PostgreSQL
                         echo '⏳ Waiting for PostgreSQL to be ready...'
                         sh """
                             kubectl wait --for=condition=available --timeout=${env.DAST_TIMEOUT}s \
                                 deployment/${env.DAST_DB_NAME} -n ${env.DAST_NAMESPACE}
                         """
-                        
+
                         // Déploiement de l'application Django
                         echo '🐍 Deploying Django application...'
                         withCredentials([
@@ -466,15 +450,7 @@ pipeline {
             initContainers:
             - name: wait-for-db
                 image: busybox:1.36
-                command:
-                - sh
-                - -c
-                - |
-                until nc -z ${env.DAST_DB_NAME} 5432; do
-                    echo "Waiting for database..."
-                    sleep 2
-                done
-                echo "Database is ready!"
+                command: ["sh", "-c", "until nc -z ${env.DAST_DB_NAME} 5432; do echo 'Waiting for database...'; sleep 2; done; echo 'Database is ready!'"]
             - name: django-migrate
                 image: ${env.TEST_IMAGE_TAG}
                 command: ["/bin/sh", "-c"]
@@ -525,25 +501,21 @@ pipeline {
         EOF
                             """
                         }
-                        
+
                         // Attente de la disponibilité de l'application
                         echo '⏳ Waiting for Django application to be ready...'
                         sh """
                             kubectl wait --for=condition=available --timeout=${env.DAST_TIMEOUT}s \
                                 deployment/${env.DAST_APP_NAME} -n ${env.DAST_NAMESPACE}
                         """
-                        
-                        // Récupération de l'URL d'accès
+
+                        // Récupération de l'URL via NodePort
                         echo '🌐 Getting application URL...'
-                        def minikubeIP = sh(
-                            script: 'minikube ip',
-                            returnStdout: true
-                        ).trim()
-                        
-                        env.DAST_APP_URL = "http://${minikubeIP}:${env.DAST_NODE_PORT}"
+                        def nodePort = sh(script: "kubectl get svc ${env.DAST_APP_NAME} -n ${env.DAST_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'", returnStdout: true).trim()
+                        env.DAST_APP_URL = "http://127.0.0.1:${nodePort}"
                         echo "✅ Application deployed and accessible at: ${env.DAST_APP_URL}"
-                        
-                        // Vérification de santé de l'application
+
+                        // Vérification de santé
                         echo '🏥 Performing health check...'
                         def healthCheckResult = sh(
                             script: """
@@ -563,18 +535,13 @@ pipeline {
                             """,
                             returnStatus: true
                         )
-                        
                         if (healthCheckResult != 0) {
-                            // Affichage des logs pour debug
                             echo '📋 Django application logs:'
-                            sh """
-                                kubectl logs -n ${env.DAST_NAMESPACE} \
-                                    -l app=django --tail=50 || true
-                            """
+                            sh "kubectl logs -n ${env.DAST_NAMESPACE} -l app=django --tail=50 || true"
                             error '❌ Application health check failed'
                         }
-                        
-                        // Affichage des informations de déploiement
+
+                        // Affichage des infos de déploiement
                         echo '📊 Deployment information:'
                         sh """
                             echo "Namespace: ${env.DAST_NAMESPACE}"
@@ -586,8 +553,8 @@ pipeline {
                             echo "Services:"
                             kubectl get svc -n ${env.DAST_NAMESPACE}
                         """
-                        
-                        // Sauvegarde de l'URL pour les stages suivants
+
+                        // Sauvegarde pour les stages suivants
                         writeFile file: 'dast-deployment-info.txt', text: """
         DAST_NAMESPACE=${env.DAST_NAMESPACE}
         DAST_APP_URL=${env.DAST_APP_URL}
@@ -595,14 +562,14 @@ pipeline {
         DAST_DB_NAME=${env.DAST_DB_NAME}
         """
                         archiveArtifacts artifacts: 'dast-deployment-info.txt', allowEmptyArchive: false
-                        
+
                         echo '✅ DAST deployment completed successfully!'
-                        
+
                     } catch (Exception e) {
                         currentBuild.result = 'FAILURE'
                         echo "❌ DAST deployment failed: ${e.message}"
-                        
-                        // Affichage des logs de debug en cas d'erreur
+
+                        // Logs de debug
                         echo '📋 Debugging information:'
                         sh """
                             echo "=== Pods Status ==="
@@ -617,7 +584,7 @@ pipeline {
                             echo "=== Events ==="
                             kubectl get events -n ${env.DAST_NAMESPACE} --sort-by='.lastTimestamp' || true
                         """
-                        
+
                         throw e
                     }
                 }
