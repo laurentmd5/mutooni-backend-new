@@ -103,7 +103,7 @@ pipeline {
                 }
 
                 stage('Sécurité Statique du Code (SAST - Python)') {
-                    agent { label 'master' } // Utilise un agent avec Docker installé
+                    agent any // Utilise un agent avec Docker installé
                     steps {
                         script {
                             docker.image('python:3.11-slim').inside {
