@@ -195,11 +195,15 @@ pipeline {
                     def trivyImageResult = sh(
                         script: """
                             docker run --rm \
-                                -v \$(pwd):/scan \
-                                aquasec/trivy image \
+                                -v /var/run/docker.sock:/var/run/docker.sock \
+                                -v /var/lib/jenkins/trivy-cache:/root/.cache/ \
+                                -e TRIVY_DB_REPOSITORY=public.ecr.aws/aquasecurity/trivy-db \
+                                aquasec/trivy:latest image \
+                                --timeout 10m \
                                 --exit-code 1 \
                                 --severity CRITICAL \
                                 --ignore-unfixed \
+                                --no-progress \
                                 ${env.TEST_IMAGE_TAG}
                         """,
                         returnStatus: true
@@ -211,9 +215,14 @@ pipeline {
                     }
                     sh """
                         docker run --rm \
+                            -v /var/run/docker.sock:/var/run/docker.sock \
+                            -v /var/lib/jenkins/trivy-cache:/root/.cache/ \
                             -v \$(pwd):/scan \
-                            aquasec/trivy image \
+                            -e TRIVY_DB_REPOSITORY=public.ecr.aws/aquasecurity/trivy-db \
+                            aquasec/trivy:latest image \
+                            --timeout 10m \
                             --format json \
+                            --no-progress \
                             --severity HIGH,CRITICAL \
                             -o /scan/trivy_image_report.json \
                             ${env.TEST_IMAGE_TAG}
