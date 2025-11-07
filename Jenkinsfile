@@ -16,7 +16,7 @@ pipeline {
         DAST_SERVICE_PORT = "8000"
         DAST_NODE_PORT = "30080"
         DAST_TIMEOUT = "180"
-        IMAGE_PULL_POLICY = "IfNotPresent"  // ← SOLUTION AJOUTÉE ICI
+        IMAGE_PULL_POLICY = "IfNotPresent"
     }
 
     options {
@@ -51,6 +51,7 @@ pipeline {
                         mkdir -p mysite/core/firebase
                         cp "$FIREBASE_KEY" mysite/core/firebase/serviceAccountKey.json
                         chmod 644 mysite/core/firebase/serviceAccountKey.json
+                        echo "✅ Firebase key copied to: mysite/core/firebase/serviceAccountKey.json"
                     '''
                 }
                 echo '✅ Firebase key injected successfully'
@@ -350,13 +351,19 @@ EOF
                         """
                         echo '✅ PostgreSQL is ready'
 
-                        echo '🔑 Generating Django SECRET_KEY...'
+                        echo '🔑 Generating Django SECRET_KEY and preparing Firebase key...'
                         def djangoSecretKey = sh(
                             script: 'openssl rand -base64 50 | tr -d "\n"',
                             returnStdout: true
                         ).trim()
 
-                        echo '🐍 Deploying Django application with improved configuration...'
+                        // Préparer la clé Firebase pour Kubernetes
+                        def firebaseKeyContent = sh(
+                            script: 'cat mysite/core/firebase/serviceAccountKey.json | base64 -w 0',
+                            returnStdout: true
+                        ).trim()
+
+                        echo '🐍 Deploying Django application with Firebase configuration...'
                         sh """
 cat <<EOF | kubectl apply -n ${env.DAST_NAMESPACE} -f -
 apiVersion: v1
@@ -371,6 +378,14 @@ stringData:
   DB_PASSWORD: postgres_dast_secure
   DB_HOST: ${env.DAST_DB_NAME}
   DB_PORT: "5432"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: firebase-secret
+type: Opaque
+data:
+  serviceAccountKey.json: ${firebaseKeyContent}
 ---
 apiVersion: v1
 kind: Service
@@ -418,10 +433,14 @@ spec:
               echo "✅ Database is ready!"
         - name: django-migrate
           image: ${env.TEST_IMAGE_TAG}
-          imagePullPolicy: ${env.IMAGE_PULL_POLICY}  # ← CHANGEMENT CRITIQUE ICI
+          imagePullPolicy: ${env.IMAGE_PULL_POLICY}
           command: ["/bin/sh", "-c"]
           args:
             - |
+              echo "Creating firebase directory..."
+              mkdir -p /app/core/firebase
+              echo "Copying Firebase key..."
+              cp /tmp/firebase/serviceAccountKey.json /app/core/firebase/serviceAccountKey.json
               echo "Running Django migrations..."
               python manage.py migrate --noinput
               echo "Collecting static files..."
@@ -437,10 +456,14 @@ spec:
               value: "False"
             - name: ALLOWED_HOSTS
               value: "*"
+          volumeMounts:
+            - name: firebase-key
+              mountPath: /tmp/firebase
+              readOnly: true
       containers:
         - name: django
           image: ${env.TEST_IMAGE_TAG}
-          imagePullPolicy: ${env.IMAGE_PULL_POLICY}  # ← CHANGEMENT CRITIQUE ICI
+          imagePullPolicy: ${env.IMAGE_PULL_POLICY}
           ports:
             - containerPort: 8000
           envFrom:
@@ -453,11 +476,15 @@ spec:
               value: "False"
             - name: ALLOWED_HOSTS
               value: "*"
+          volumeMounts:
+            - name: firebase-key
+              mountPath: /app/core/firebase
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /
               port: 8000
-            initialDelaySeconds: 30  # Augmenté pour laisser le temps à l'app de démarrer
+            initialDelaySeconds: 30
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 6
@@ -476,6 +503,13 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+      volumes:
+        - name: firebase-key
+          secret:
+            secretName: firebase-secret
+            items:
+            - key: serviceAccountKey.json
+              path: serviceAccountKey.json
 EOF
 """
 
