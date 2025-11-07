@@ -12,6 +12,12 @@ pipeline {
         // --- Variables pour les tests ---
         TEST_DB_CONTAINER_NAME = "test-db-django-${BUILD_NUMBER}"
         TEST_IMAGE_TAG = "${env.DOCKER_REGISTRY}/${env.IMAGE_NAME}:${BUILD_NUMBER}"
+        DAST_NAMESPACE = "dast-test-${BUILD_NUMBER}"
+        DAST_APP_NAME = "django-app-dast"
+        DAST_DB_NAME = "postgres-dast"
+        DAST_SERVICE_PORT = "8000"
+        DAST_NODE_PORT = "30080"  // Port accessible depuis l'hôte
+        DAST_TIMEOUT = "180"
     }
     
     options {
@@ -274,7 +280,353 @@ pipeline {
             }
         }
 
+        stage('Déploiement Temporaire pour DAST') {
+            steps {
+                echo '🚀 Deploying application to Minikube for DAST testing...'
+                script {
+                    try {
+                        // Vérification de l'environnement Minikube
+                        echo '🔍 Checking Minikube status...'
+                        def minikubeStatus = sh(
+                            script: 'minikube status --format="{{.Host}}" || echo "stopped"',
+                            returnStdout: true
+                        ).trim()
+                        
+                        if (minikubeStatus != 'Running') {
+                            error '❌ Minikube n\'est pas en cours d\'exécution. Veuillez démarrer Minikube.'
+                        }
+                        
+                        // Création du namespace temporaire
+                        echo "📦 Creating temporary namespace: ${env.DAST_NAMESPACE}"
+                        sh """
+                            kubectl create namespace ${env.DAST_NAMESPACE} || true
+                            kubectl label namespace ${env.DAST_NAMESPACE} jenkins-build=${BUILD_NUMBER} || true
+                        """
+                        
+                        // Chargement de l'image dans Minikube
+                        echo "📥 Loading Docker image into Minikube..."
+                        sh """
+                            minikube image load ${env.TEST_IMAGE_TAG} --daemon=false || \
+                            docker save ${env.TEST_IMAGE_TAG} | (eval \$(minikube docker-env) && docker load)
+                        """
+                        
+                        // Vérification de l'image dans Minikube
+                        sh """
+                            minikube ssh "docker images | grep ${env.IMAGE_NAME}" || \
+                            echo "⚠️  Warning: Image may not be loaded properly"
+                        """
+                        
+                        // Déploiement de PostgreSQL
+                        echo '🗄️  Deploying PostgreSQL database...'
+                        sh """
+                            cat <<EOF | kubectl apply -n ${env.DAST_NAMESPACE} -f -
+        apiVersion: v1
+        kind: Secret
+        metadata:
+        name: postgres-secret
+        type: Opaque
+        stringData:
+        POSTGRES_DB: mysite_dast
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: postgres_dast_secure
+        ---
+        apiVersion: v1
+        kind: Service
+        metadata:
+        name: ${env.DAST_DB_NAME}
+        labels:
+            app: postgres
+        spec:
+        ports:
+        - port: 5432
+            targetPort: 5432
+        selector:
+            app: postgres
+        ---
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+        name: ${env.DAST_DB_NAME}
+        labels:
+            app: postgres
+        spec:
+        replicas: 1
+        selector:
+            matchLabels:
+            app: postgres
+        template:
+            metadata:
+            labels:
+                app: postgres
+            spec:
+            containers:
+            - name: postgres
+                image: postgres:13
+                ports:
+                - containerPort: 5432
+                envFrom:
+                - secretRef:
+                    name: postgres-secret
+                readinessProbe:
+                exec:
+                    command:
+                    - pg_isready
+                    - -U
+                    - postgres
+                initialDelaySeconds: 10
+                periodSeconds: 5
+                timeoutSeconds: 3
+                livenessProbe:
+                exec:
+                    command:
+                    - pg_isready
+                    - -U
+                    - postgres
+                initialDelaySeconds: 30
+                periodSeconds: 10
+                timeoutSeconds: 3
+                resources:
+                requests:
+                    memory: "256Mi"
+                    cpu: "250m"
+                limits:
+                    memory: "512Mi"
+                    cpu: "500m"
+        EOF
+                        """
+                        
+                        // Attente de la disponibilité de PostgreSQL
+                        echo '⏳ Waiting for PostgreSQL to be ready...'
+                        sh """
+                            kubectl wait --for=condition=available --timeout=${env.DAST_TIMEOUT}s \
+                                deployment/${env.DAST_DB_NAME} -n ${env.DAST_NAMESPACE}
+                        """
+                        
+                        // Déploiement de l'application Django
+                        echo '🐍 Deploying Django application...'
+                        withCredentials([
+                            string(credentialsId: 'DJANGO_SECRET_KEY', variable: 'DJANGO_SECRET')
+                        ]) {
+                            sh """
+                                cat <<EOF | kubectl apply -n ${env.DAST_NAMESPACE} -f -
+        apiVersion: v1
+        kind: Secret
+        metadata:
+        name: django-secret
+        type: Opaque
+        stringData:
+        SECRET_KEY: \${DJANGO_SECRET}
+        DB_NAME: mysite_dast
+        DB_USER: postgres
+        DB_PASSWORD: postgres_dast_secure
+        DB_HOST: ${env.DAST_DB_NAME}
+        DB_PORT: "5432"
+        ---
+        apiVersion: v1
+        kind: Service
+        metadata:
+        name: ${env.DAST_APP_NAME}
+        labels:
+            app: django
+        spec:
+        type: NodePort
+        ports:
+        - port: ${env.DAST_SERVICE_PORT}
+            targetPort: 8000
+            nodePort: ${env.DAST_NODE_PORT}
+            protocol: TCP
+        selector:
+            app: django
+        ---
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+        name: ${env.DAST_APP_NAME}
+        labels:
+            app: django
+        spec:
+        replicas: 1
+        selector:
+            matchLabels:
+            app: django
+        template:
+            metadata:
+            labels:
+                app: django
+            spec:
+            initContainers:
+            - name: wait-for-db
+                image: busybox:1.36
+                command:
+                - sh
+                - -c
+                - |
+                until nc -z ${env.DAST_DB_NAME} 5432; do
+                    echo "Waiting for database..."
+                    sleep 2
+                done
+                echo "Database is ready!"
+            - name: django-migrate
+                image: ${env.TEST_IMAGE_TAG}
+                command: ["/bin/sh", "-c"]
+                args:
+                - |
+                python manage.py migrate --noinput
+                envFrom:
+                - secretRef:
+                    name: django-secret
+                env:
+                - name: DJANGO_SETTINGS_MODULE
+                value: "mysite.settings"
+            containers:
+            - name: django
+                image: ${env.TEST_IMAGE_TAG}
+                imagePullPolicy: Never
+                ports:
+                - containerPort: 8000
+                envFrom:
+                - secretRef:
+                    name: django-secret
+                env:
+                - name: DJANGO_SETTINGS_MODULE
+                value: "mysite.settings"
+                readinessProbe:
+                httpGet:
+                    path: /
+                    port: 8000
+                initialDelaySeconds: 15
+                periodSeconds: 5
+                timeoutSeconds: 3
+                failureThreshold: 3
+                livenessProbe:
+                httpGet:
+                    path: /
+                    port: 8000
+                initialDelaySeconds: 30
+                periodSeconds: 10
+                timeoutSeconds: 5
+                failureThreshold: 3
+                resources:
+                requests:
+                    memory: "512Mi"
+                    cpu: "500m"
+                limits:
+                    memory: "1Gi"
+                    cpu: "1000m"
+        EOF
+                            """
+                        }
+                        
+                        // Attente de la disponibilité de l'application
+                        echo '⏳ Waiting for Django application to be ready...'
+                        sh """
+                            kubectl wait --for=condition=available --timeout=${env.DAST_TIMEOUT}s \
+                                deployment/${env.DAST_APP_NAME} -n ${env.DAST_NAMESPACE}
+                        """
+                        
+                        // Récupération de l'URL d'accès
+                        echo '🌐 Getting application URL...'
+                        def minikubeIP = sh(
+                            script: 'minikube ip',
+                            returnStdout: true
+                        ).trim()
+                        
+                        env.DAST_APP_URL = "http://${minikubeIP}:${env.DAST_NODE_PORT}"
+                        echo "✅ Application deployed and accessible at: ${env.DAST_APP_URL}"
+                        
+                        // Vérification de santé de l'application
+                        echo '🏥 Performing health check...'
+                        def healthCheckResult = sh(
+                            script: """
+                                max_attempts=30
+                                attempt=0
+                                while [ \$attempt -lt \$max_attempts ]; do
+                                    if curl -f -s -o /dev/null -w "%{http_code}" ${env.DAST_APP_URL}/ | grep -q "200\\|301\\|302"; then
+                                        echo "✅ Health check passed"
+                                        exit 0
+                                    fi
+                                    echo "⏳ Attempt \$((attempt+1))/\$max_attempts - Waiting for app to respond..."
+                                    sleep 10
+                                    attempt=\$((attempt+1))
+                                done
+                                echo "❌ Health check failed after \$max_attempts attempts"
+                                exit 1
+                            """,
+                            returnStatus: true
+                        )
+                        
+                        if (healthCheckResult != 0) {
+                            // Affichage des logs pour debug
+                            echo '📋 Django application logs:'
+                            sh """
+                                kubectl logs -n ${env.DAST_NAMESPACE} \
+                                    -l app=django --tail=50 || true
+                            """
+                            error '❌ Application health check failed'
+                        }
+                        
+                        // Affichage des informations de déploiement
+                        echo '📊 Deployment information:'
+                        sh """
+                            echo "Namespace: ${env.DAST_NAMESPACE}"
+                            echo "Application URL: ${env.DAST_APP_URL}"
+                            echo ""
+                            echo "Pods status:"
+                            kubectl get pods -n ${env.DAST_NAMESPACE}
+                            echo ""
+                            echo "Services:"
+                            kubectl get svc -n ${env.DAST_NAMESPACE}
+                        """
+                        
+                        // Sauvegarde de l'URL pour les stages suivants
+                        writeFile file: 'dast-deployment-info.txt', text: """
+        DAST_NAMESPACE=${env.DAST_NAMESPACE}
+        DAST_APP_URL=${env.DAST_APP_URL}
+        DAST_APP_NAME=${env.DAST_APP_NAME}
+        DAST_DB_NAME=${env.DAST_DB_NAME}
+        """
+                        archiveArtifacts artifacts: 'dast-deployment-info.txt', allowEmptyArchive: false
+                        
+                        echo '✅ DAST deployment completed successfully!'
+                        
+                    } catch (Exception e) {
+                        currentBuild.result = 'FAILURE'
+                        echo "❌ DAST deployment failed: ${e.message}"
+                        
+                        // Affichage des logs de debug en cas d'erreur
+                        echo '📋 Debugging information:'
+                        sh """
+                            echo "=== Pods Status ==="
+                            kubectl get pods -n ${env.DAST_NAMESPACE} || true
+                            echo ""
+                            echo "=== Django Logs ==="
+                            kubectl logs -n ${env.DAST_NAMESPACE} -l app=django --tail=100 || true
+                            echo ""
+                            echo "=== PostgreSQL Logs ==="
+                            kubectl logs -n ${env.DAST_NAMESPACE} -l app=postgres --tail=50 || true
+                            echo ""
+                            echo "=== Events ==="
+                            kubectl get events -n ${env.DAST_NAMESPACE} --sort-by='.lastTimestamp' || true
+                        """
+                        
+                        throw e
+                    }
+                }
+            }
+            post {
+                failure {
+                    echo '🧹 Cleaning up failed DAST deployment...'
+                    script {
+                        sh """
+                            kubectl delete namespace ${env.DAST_NAMESPACE} --wait=false || true
+                        """
+                    }
+                }
+            }
+        }
+
     }
+
 
     post {
         always {
