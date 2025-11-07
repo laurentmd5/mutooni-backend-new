@@ -1,5 +1,5 @@
 pipeline {
-    agent any
+    agent any // L'agent par défaut pour la plupart des stages
 
     environment {
         // --- Configuration de base ---
@@ -12,13 +12,12 @@ pipeline {
         // --- Variables pour les tests ---
         TEST_DB_CONTAINER_NAME = "test-db-django-${BUILD_NUMBER}"
         TEST_IMAGE_TAG = "${env.DOCKER_REGISTRY}/${env.IMAGE_NAME}:${BUILD_NUMBER}"
-        
     }
     
     options {
         skipDefaultCheckout()
-        timestamps() // Bonne addition !
-        timeout(time: 1, unit: 'HOURS') // Bonne addition !
+        timestamps()
+        timeout(time: 1, unit: 'HOURS')
     }
 
     stages {
@@ -46,7 +45,6 @@ pipeline {
                     sh '''
                         mkdir -p mysite/core/firebase
                         cp "$FIREBASE_KEY" mysite/core/firebase/serviceAccountKey.json
-                        # Correction des permissions pour le montage Docker
                         chmod 644 mysite/core/firebase/serviceAccountKey.json
                     '''
                 }
@@ -57,80 +55,94 @@ pipeline {
         stage('Analyse Qualité & Sécurité en parallèle') {
             parallel {
                 stage('Linting & Qualité du Code (Flake8)') {
+                    // --- CHANGEMENT ICI ---
+                    // Cet agent s'applique SEULEMENT à ce stage parallèle
+                    agent { 
+                        docker { 
+                            image 'python:3.11-slim' 
+                            args '-v /var/lib/jenkins/workspace/mutooni-back_main:/app' // Monter le code source
+                            reuseNode true // Utilise le même espace de travail
+                        }
+                    }
                     steps {
-                        echo '🔍 Checking code style with flake8...'
-                        script {
-                            // Méthode robuste : créer un venv dédié pour le linting
-                            sh 'python3 -m venv venv-lint'
-                            echo 'Installing linting tools...'
-                            sh 'venv-lint/bin/pip install --upgrade pip --quiet'
-                            sh 'venv-lint/bin/pip install flake8 flake8-html --quiet'
-                            
-                            echo '📏 Running Flake8 - Critical Errors (E9, F63, F7, F82)...'
-                            def flake8Critical = sh(
-                                script: 'venv-lint/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics',
-                                returnStatus: true
-                            )
-                            
-                            if (flake8Critical != 0) {
-                                currentBuild.result = 'UNSTABLE'
-                                echo '⚠️  Flake8 a détecté des erreurs de syntaxe critiques !'
-                            } else {
-                                echo '✅ Aucune erreur de syntaxe critique'
-                            }
-                            
-                            echo '📊 Running Flake8 - Quality Checks & Report...'
-                            sh '''
-                                venv-lint/bin/flake8 . \
-                                    --count \
-                                    --exit-zero \
-                                    --max-complexity=10 \
-                                    --max-line-length=120 \
-                                    --statistics \
-                                    --format=html \
-                                    --htmldir=flake8-report
-                            '''
-                            
+                        echo '🔍 Checking code style with flake8 (inside Docker)...'
+                        // Le conteneur a déjà Python et pip
+                        sh 'pip install --upgrade pip --quiet'
+                        sh 'pip install flake8 flake8-html --quiet'
+                        
+                        echo '📏 Running Flake8 - Critical Errors (E9, F63, F7, F82)...'
+                        def flake8Critical = sh(
+                            script: 'flake8 /app --count --select=E9,F63,F7,F82 --show-source --statistics',
+                            returnStatus: true
+                        )
+                        
+                        if (flake8Critical != 0) {
+                            currentBuild.result = 'UNSTABLE'
+                            echo '⚠️  Flake8 a détecté des erreurs de syntaxe critiques !'
+                        } else {
+                            echo '✅ Aucune erreur de syntaxe critique'
+                        }
+                        
+                        echo '📊 Running Flake8 - Quality Checks & Report...'
+                        sh '''
+                            flake8 /app \
+                                --count \
+                                --exit-zero \
+                                --max-complexity=10 \
+                                --max-line-length=120 \
+                                --statistics \
+                                --format=html \
+                                --htmldir=/app/flake8-report
+                        '''
+                        
+                        echo '✅ Linting completed'
+                    }
+                    post {
+                        always {
+                            // Archiver le rapport depuis l'espace de travail
                             archiveArtifacts artifacts: 'flake8-report/**', allowEmptyArchive: true
-                            sh 'rm -rf venv-lint'
-                            echo '✅ Linting completed'
                         }
                     }
                 }
 
                 stage('Sécurité Statique du Code (SAST - Python)') {
+                    // --- CHANGEMENT ICI ---
+                    agent { 
+                        docker { 
+                            image 'python:3.11-slim' 
+                            args '-v /var/lib/jenkins/workspace/mutooni-back_main:/app' // Monter le code source
+                            reuseNode true
+                        } 
+                    }
                     steps {
-                        echo '🛡️  Running SAST with Bandit and Semgrep...'
-                        script {
-                            // Méthode robuste : venv dédié pour le SAST
-                            sh 'python3 -m venv venv-tools'
-                            echo 'Installing SAST tools...'
-                            sh 'venv-tools/bin/pip install --upgrade pip --quiet'
-                            sh 'venv-tools/bin/pip install bandit semgrep --quiet'
-                            
-                            echo '🔍 Running Bandit...'
-                            sh '''
-                                venv-tools/bin/bandit -r . -o bandit_report.json -f json --exit-zero
-                                venv-tools/bin/bandit -r . -o bandit_report.html -f html --exit-zero
-                            '''
+                        echo '🛡️  Running SAST with Bandit and Semgrep (inside Docker)...'
+                        sh 'pip install --upgrade pip --quiet'
+                        sh 'pip install bandit semgrep --quiet'
+                        
+                        echo '🔍 Running Bandit...'
+                        sh '''
+                            bandit -r /app -o /app/bandit_report.json -f json --exit-zero
+                            bandit -r /app -o /app/bandit_report.html -f html --exit-zero
+                        '''
+                        
+                        echo '🔍 Running Semgrep...'
+                        def semgrepResult = sh(
+                            script: 'semgrep --config="p/python" --config="p/django" --json -o /app/semgrep_report.json /app --error',
+                            returnStatus: true
+                        )
+                        
+                        if (semgrepResult != 0) {
+                            currentBuild.result = 'UNSTABLE'
+                            echo '⚠️  Semgrep a trouvé des problèmes. Consultez semgrep_report.json'
+                        } else {
+                            echo '✅ Aucun problème de sécurité détecté'
+                        }
+                    }
+                    post {
+                        always {
+                            // Archiver les rapports depuis l'espace de travail
                             archiveArtifacts artifacts: 'bandit_report.*', allowEmptyArchive: true
-                            
-                            echo '🔍 Running Semgrep...'
-                            def semgrepResult = sh(
-                                script: 'venv-tools/bin/semgrep --config="p/python" --config="p/django" --json -o semgrep_report.json . --error',
-                                returnStatus: true
-                            )
-                            
                             archiveArtifacts artifacts: 'semgrep_report.json', allowEmptyArchive: true
-                            
-                            if (semgrepResult != 0) {
-                                currentBuild.result = 'UNSTABLE'
-                                echo '⚠️  Semgrep a trouvé des problèmes. Consultez semgrep_report.json'
-                            } else {
-                                echo '✅ Aucun problème de sécurité détecté'
-                            }
-                            
-                            sh 'rm -rf venv-tools'
                         }
                     }
                 }
@@ -138,6 +150,7 @@ pipeline {
         }
 
         stage('Analyse des Dépendances (SCA - Trivy)') {
+            // Ce stage utilisait déjà Docker, donc pas de changement
             steps {
                 echo '📦 Scanning dependencies (requirements.txt) with Trivy...'
                 script {
@@ -168,6 +181,9 @@ pipeline {
             }
         }
 
+        // --- TOUS LES AUTRES STAGES RESTENT IDENTIQUES ---
+        // (Build Image, Scan Image, Tests Unitaires)
+
         stage('Build Image Docker') {
             steps {
                 echo "🐳 Building Docker image: ${env.TEST_IMAGE_TAG}"
@@ -178,7 +194,6 @@ pipeline {
                         passwordVariable: 'DOCKER_PASSWORD'
                     )]) {
                         sh "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin ${env.DOCKER_REGISTRY}"
-                        
                         sh """
                             docker build \
                                 --build-arg BUILD_DATE=\$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
@@ -187,7 +202,6 @@ pipeline {
                                 --tag ${env.TEST_IMAGE_TAG} \
                                 .
                         """
-                        
                         sh "docker push ${env.TEST_IMAGE_TAG}"
                         echo "✅ Image built and pushed: ${env.TEST_IMAGE_TAG}"
                     }
@@ -211,13 +225,11 @@ pipeline {
                         """,
                         returnStatus: true
                     )
-
                     if (trivyImageResult != 0) {
                         error '❌ Trivy a trouvé des vulnérabilités CRITIQUES dans l\'image Docker.'
                     } else {
                         echo '✅ Aucune vulnérabilité CRITIQUE trouvée dans l\'image.'
                     }
-
                     sh """
                         docker run --rm \
                             -v \$(pwd):/scan \
@@ -227,7 +239,6 @@ pipeline {
                             -o /scan/trivy_image_report.json \
                             ${env.TEST_IMAGE_TAG}
                     """
-                    
                     archiveArtifacts artifacts: 'trivy_image_report.json', allowEmptyArchive: true
                 }
             }
@@ -250,18 +261,12 @@ pipeline {
                                 --health-retries=5 \
                                 docker.io/library/postgres:13
                         """
-                        
                         echo '⏳ Waiting for database to be healthy...'
-                        // Utiliser une boucle 'until' robuste au lieu d'un 'sleep' fixe
                         sh """
                             timeout 30s bash -c 'until docker inspect --format="{{.State.Health.Status}}" ${env.TEST_DB_CONTAINER_NAME} | grep -q "healthy"; do sleep 1; done'
                         """
                         echo '✅ Database is healthy.'
-
-                        // Pas besoin de 'chmod' ici, il est déjà fait dans le stage 'Inject'
                         
-                        echo '🧪 Running tests...'
-                        // Note : le dossier test-reports est créé par le 'docker run -v'
                         sh 'mkdir -p test-reports'
                         sh """
                             docker run --rm \
@@ -277,9 +282,7 @@ pipeline {
                                 ${env.TEST_IMAGE_TAG} \
                                 sh -c "python manage.py test --noinput --verbosity=2"
                         """
-                        
                         echo '✅ All tests passed successfully!'
-
                     } catch (e) {
                         currentBuild.result = 'FAILURE'
                         echo "❌ Tests failed: ${e.message}"
@@ -293,7 +296,6 @@ pipeline {
             }
             post {
                 always {
-                    // Publier les rapports de tests JUnit si disponibles
                     junit testResults: 'test-reports/**/*.xml', allowEmptyResults: true
                 }
             }
@@ -302,36 +304,22 @@ pipeline {
     } // Fin des stages
 
     post {
+        // ... votre bloc 'post' reste identique ...
         always {
             echo 'Pipeline finished.'
-            
-            // Nettoyage : se déconnecter de Docker Hub et nettoyer les conteneurs de test
             sh "docker logout ${env.DOCKER_REGISTRY} || true"
             sh "docker stop ${env.TEST_DB_CONTAINER_NAME} || true"
             sh "docker rm ${env.TEST_DB_CONTAINER_NAME} || true"
-            
             cleanWs()
         }
-        
-        // --- Notifications ---
         success {
             echo '✅ Pipeline a réussi !'
-            // Exemple de notification (à décommenter et configurer)
-            // mail to: 'votre.email@example.com',
-            //      subject: "Pipeline Réussi: ${env.JOB_NAME} [${env.BUILD_NUMBER}]",
-            //      body: "Le build ${env.BUILD_NUMBER} pour ${env.GH_REPO} a réussi."
         }
         failure {
             echo '❌ Pipeline a échoué !'
-            // mail to: 'votre.email@example.com',
-            //      subject: "ÉCHEC Pipeline: ${env.JOB_NAME} [${env.BUILD_NUMBER}]",
-            //      body: "Le build ${env.BUILD_NUMBER} a échoué. Consultez les logs : ${env.BUILD_URL}"
         }
         unstable {
             echo '⚠️ Pipeline instable (problèmes de qualité/sécurité trouvés).'
-            // mail to: 'votre.email@example.com',
-            //      subject: "Pipeline Instable: ${env.JOB_NAME} [${env.BUILD_NUMBER}]",
-            //      body: "Le build ${env.BUILD_NUMBER} est instable (problèmes SAST/SCA). Consultez les rapports : ${env.BUILD_URL}"
         }
     }
 }
