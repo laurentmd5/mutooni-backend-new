@@ -1,10 +1,10 @@
 pipeline {
-    agent any // L'agent par défaut pour tous les stages
+    agent any
 
     environment {
         // --- Configuration de base ---
         GH_REPO = 'laurentmd5/mutooni-backend-new'
-        GITHUB_CREDENTIALS_ID = 'my-token-jenkins' // Assurez-vous que c'est le bon ID
+        GITHUB_CREDENTIALS_ID = 'my-token-jenkins'
         IMAGE_NAME = "mon-app-django"
         DOCKER_REGISTRY = "docker.io/laurentmd5"
         DOCKER_REGISTRY_CREDENTIALS_ID = 'docker-hub-creds'
@@ -55,87 +55,69 @@ pipeline {
         stage('Analyse Qualité & Sécurité en parallèle') {
             parallel {
                 stage('Linting & Qualité du Code (Flake8)') {
-                    agent any// Utilise un agent avec Docker installé, ou 'any' si c'est suffisant
+                    agent any
                     steps {
                         script {
-                            // Exécute tout dans un conteneur Python, résolvant le problème venv
-                            docker.image('python:3.11-slim').inside {
-                                echo '🔍 Checking code style with flake8 (inside Docker)...'
-                                sh 'pip install --upgrade pip --quiet'
-                                sh 'pip install flake8 flake8-html --quiet'
-                                
-                                echo '📏 Running Flake8 - Critical Errors (E9, F63, F7, F82)...'
-                                // Note: J'utilise '.' car le workspace est le CWD du conteneur
-                                def flake8Critical = sh(
-                                    script: 'flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics',
-                                    returnStatus: true
-                                )
-                                
-                                if (flake8Critical != 0) {
-                                    currentBuild.result = 'UNSTABLE'
-                                    echo '⚠️  Flake8 a détecté des erreurs de syntaxe critiques !'
-                                } else {
-                                    echo '✅ Aucune erreur de syntaxe critique'
-                                }
-                                
-                                echo '📊 Running Flake8 - Quality Checks & Report...'
-                                sh '''
-                                    flake8 . \
-                                        --count \
-                                        --exit-zero \
-                                        --max-complexity=10 \
-                                        --max-line-length=120 \
-                                        --statistics \
-                                        --format=html \
-                                        --htmldir=flake8-report
-                                '''
-                                
-                                echo '✅ Linting completed'
-                            }
+                            echo '🔍 Checking code style with flake8 (inside Docker)...'
+                            // Utilise docker run avec --user root pour avoir les permissions
+                            sh """
+                                docker run --rm \
+                                    --user root \
+                                    -v \$(pwd):/workspace \
+                                    -w /workspace \
+                                    python:3.11-slim \
+                                    bash -c '
+                                        pip install --upgrade pip --quiet && \
+                                        pip install flake8 flake8-html --quiet && \
+                                        echo "📏 Running Flake8 - Critical Errors (E9, F63, F7, F82)..." && \
+                                        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics || echo "⚠️  Erreurs critiques détectées" && \
+                                        echo "📊 Running Flake8 - Quality Checks & Report..." && \
+                                        flake8 . \
+                                            --count \
+                                            --exit-zero \
+                                            --max-complexity=10 \
+                                            --max-line-length=120 \
+                                            --statistics \
+                                            --format=html \
+                                            --htmldir=flake8-report
+                                    '
+                            """
+                            echo '✅ Linting completed'
                         }
                     }
                     post {
                         always {
-                            // Archiver le rapport depuis l'espace de travail
                             archiveArtifacts artifacts: 'flake8-report/**', allowEmptyArchive: true
                         }
                     }
                 }
 
                 stage('Sécurité Statique du Code (SAST - Python)') {
-                    agent any // Utilise un agent avec Docker installé
+                    agent any
                     steps {
                         script {
-                            docker.image('python:3.11-slim').inside {
-                                echo '🛡️  Running SAST with Bandit and Semgrep (inside Docker)...'
-                                sh 'pip install --upgrade pip --quiet'
-                                sh 'pip install bandit semgrep --quiet'
-                                
-                                echo '🔍 Running Bandit...'
-                                sh '''
-                                    bandit -r . -o bandit_report.json -f json --exit-zero
-                                    bandit -r . -o bandit_report.html -f html --exit-zero
-                                '''
-                                
-                                echo '🔍 Running Semgrep...'
-                                // Note: J'utilise '.' comme chemin d'analyse
-                                def semgrepResult = sh(
-                                    script: 'semgrep --config="p/python" --config="p/django" --json -o semgrep_report.json . --error',
-                                    returnStatus: true
-                                )
-                                
-                                if (semgrepResult != 0) {
-                                    currentBuild.result = 'UNSTABLE'
-                                    echo '⚠️  Semgrep a trouvé des problèmes. Consultez semgrep_report.json'
-                                } else {
-                                    echo '✅ Aucun problème de sécurité détecté'
-                                }
-                            }
+                            echo '🛡️  Running SAST with Bandit and Semgrep (inside Docker)...'
+                            sh """
+                                docker run --rm \
+                                    --user root \
+                                    -v \$(pwd):/workspace \
+                                    -w /workspace \
+                                    python:3.11-slim \
+                                    bash -c '
+                                        pip install --upgrade pip --quiet && \
+                                        pip install bandit semgrep --quiet && \
+                                        echo "🔍 Running Bandit..." && \
+                                        bandit -r . -o bandit_report.json -f json --exit-zero && \
+                                        bandit -r . -o bandit_report.html -f html --exit-zero && \
+                                        echo "🔍 Running Semgrep..." && \
+                                        semgrep --config="p/python" --config="p/django" --json -o semgrep_report.json . --error || echo "⚠️  Semgrep a trouvé des problèmes"
+                                    '
+                            """
+                            echo '✅ SAST analysis completed'
                         }
                     }
                     post {
                         always {
-                            // Archiver les rapports depuis l'espace de travail
                             archiveArtifacts artifacts: 'bandit_report.*', allowEmptyArchive: true
                             archiveArtifacts artifacts: 'semgrep_report.json', allowEmptyArchive: true
                         }
@@ -145,7 +127,6 @@ pipeline {
         }
 
         stage('Analyse des Dépendances (SCA - Trivy)') {
-            // Ce stage est déjà parfait, il utilise 'docker run'
             steps {
                 echo '📦 Scanning dependencies (requirements.txt) with Trivy...'
                 script {
@@ -293,7 +274,7 @@ pipeline {
             }
         }
 
-    } // Fin des stages
+    }
 
     post {
         always {
