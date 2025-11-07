@@ -55,7 +55,7 @@ pipeline {
         stage('Analyse Qualité & Sécurité en parallèle') {
             parallel {
                 stage('Linting & Qualité du Code (Flake8)') {
-                    agent { label 'master' } // Utilise un agent avec Docker installé, ou 'any' si c'est suffisant
+                    agent any// Utilise un agent avec Docker installé, ou 'any' si c'est suffisant
                     steps {
                         script {
                             // Exécute tout dans un conteneur Python, résolvant le problème venv
