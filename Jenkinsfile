@@ -1,5 +1,5 @@
 pipeline {
-    agent any // L'agent par défaut pour la plupart des stages
+    agent any // L'agent par défaut pour tous les stages
 
     environment {
         // --- Configuration de base ---
@@ -55,47 +55,44 @@ pipeline {
         stage('Analyse Qualité & Sécurité en parallèle') {
             parallel {
                 stage('Linting & Qualité du Code (Flake8)') {
-                    // --- CHANGEMENT ICI ---
-                    // Cet agent s'applique SEULEMENT à ce stage parallèle
-                    agent { 
-                        docker { 
-                            image 'python:3.11-slim' 
-                            args '-v /var/lib/jenkins/workspace/mutooni-back_main:/app' // Monter le code source
-                            reuseNode true // Utilise le même espace de travail
-                        }
-                    }
+                    agent { label 'master' } // Utilise un agent avec Docker installé, ou 'any' si c'est suffisant
                     steps {
-                        echo '🔍 Checking code style with flake8 (inside Docker)...'
-                        // Le conteneur a déjà Python et pip
-                        sh 'pip install --upgrade pip --quiet'
-                        sh 'pip install flake8 flake8-html --quiet'
-                        
-                        echo '📏 Running Flake8 - Critical Errors (E9, F63, F7, F82)...'
-                        def flake8Critical = sh(
-                            script: 'flake8 /app --count --select=E9,F63,F7,F82 --show-source --statistics',
-                            returnStatus: true
-                        )
-                        
-                        if (flake8Critical != 0) {
-                            currentBuild.result = 'UNSTABLE'
-                            echo '⚠️  Flake8 a détecté des erreurs de syntaxe critiques !'
-                        } else {
-                            echo '✅ Aucune erreur de syntaxe critique'
+                        script {
+                            // Exécute tout dans un conteneur Python, résolvant le problème venv
+                            docker.image('python:3.11-slim').inside {
+                                echo '🔍 Checking code style with flake8 (inside Docker)...'
+                                sh 'pip install --upgrade pip --quiet'
+                                sh 'pip install flake8 flake8-html --quiet'
+                                
+                                echo '📏 Running Flake8 - Critical Errors (E9, F63, F7, F82)...'
+                                // Note: J'utilise '.' car le workspace est le CWD du conteneur
+                                def flake8Critical = sh(
+                                    script: 'flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics',
+                                    returnStatus: true
+                                )
+                                
+                                if (flake8Critical != 0) {
+                                    currentBuild.result = 'UNSTABLE'
+                                    echo '⚠️  Flake8 a détecté des erreurs de syntaxe critiques !'
+                                } else {
+                                    echo '✅ Aucune erreur de syntaxe critique'
+                                }
+                                
+                                echo '📊 Running Flake8 - Quality Checks & Report...'
+                                sh '''
+                                    flake8 . \
+                                        --count \
+                                        --exit-zero \
+                                        --max-complexity=10 \
+                                        --max-line-length=120 \
+                                        --statistics \
+                                        --format=html \
+                                        --htmldir=flake8-report
+                                '''
+                                
+                                echo '✅ Linting completed'
+                            }
                         }
-                        
-                        echo '📊 Running Flake8 - Quality Checks & Report...'
-                        sh '''
-                            flake8 /app \
-                                --count \
-                                --exit-zero \
-                                --max-complexity=10 \
-                                --max-line-length=120 \
-                                --statistics \
-                                --format=html \
-                                --htmldir=/app/flake8-report
-                        '''
-                        
-                        echo '✅ Linting completed'
                     }
                     post {
                         always {
@@ -106,36 +103,34 @@ pipeline {
                 }
 
                 stage('Sécurité Statique du Code (SAST - Python)') {
-                    // --- CHANGEMENT ICI ---
-                    agent { 
-                        docker { 
-                            image 'python:3.11-slim' 
-                            args '-v /var/lib/jenkins/workspace/mutooni-back_main:/app' // Monter le code source
-                            reuseNode true
-                        } 
-                    }
+                    agent { label 'master' } // Utilise un agent avec Docker installé
                     steps {
-                        echo '🛡️  Running SAST with Bandit and Semgrep (inside Docker)...'
-                        sh 'pip install --upgrade pip --quiet'
-                        sh 'pip install bandit semgrep --quiet'
-                        
-                        echo '🔍 Running Bandit...'
-                        sh '''
-                            bandit -r /app -o /app/bandit_report.json -f json --exit-zero
-                            bandit -r /app -o /app/bandit_report.html -f html --exit-zero
-                        '''
-                        
-                        echo '🔍 Running Semgrep...'
-                        def semgrepResult = sh(
-                            script: 'semgrep --config="p/python" --config="p/django" --json -o /app/semgrep_report.json /app --error',
-                            returnStatus: true
-                        )
-                        
-                        if (semgrepResult != 0) {
-                            currentBuild.result = 'UNSTABLE'
-                            echo '⚠️  Semgrep a trouvé des problèmes. Consultez semgrep_report.json'
-                        } else {
-                            echo '✅ Aucun problème de sécurité détecté'
+                        script {
+                            docker.image('python:3.11-slim').inside {
+                                echo '🛡️  Running SAST with Bandit and Semgrep (inside Docker)...'
+                                sh 'pip install --upgrade pip --quiet'
+                                sh 'pip install bandit semgrep --quiet'
+                                
+                                echo '🔍 Running Bandit...'
+                                sh '''
+                                    bandit -r . -o bandit_report.json -f json --exit-zero
+                                    bandit -r . -o bandit_report.html -f html --exit-zero
+                                '''
+                                
+                                echo '🔍 Running Semgrep...'
+                                // Note: J'utilise '.' comme chemin d'analyse
+                                def semgrepResult = sh(
+                                    script: 'semgrep --config="p/python" --config="p/django" --json -o semgrep_report.json . --error',
+                                    returnStatus: true
+                                )
+                                
+                                if (semgrepResult != 0) {
+                                    currentBuild.result = 'UNSTABLE'
+                                    echo '⚠️  Semgrep a trouvé des problèmes. Consultez semgrep_report.json'
+                                } else {
+                                    echo '✅ Aucun problème de sécurité détecté'
+                                }
+                            }
                         }
                     }
                     post {
@@ -150,7 +145,7 @@ pipeline {
         }
 
         stage('Analyse des Dépendances (SCA - Trivy)') {
-            // Ce stage utilisait déjà Docker, donc pas de changement
+            // Ce stage est déjà parfait, il utilise 'docker run'
             steps {
                 echo '📦 Scanning dependencies (requirements.txt) with Trivy...'
                 script {
@@ -164,7 +159,7 @@ pipeline {
                                 --ignore-unfixed \
                                 --format json \
                                 -o /src/trivy_sca_report.json \
-                                /src
+                                .
                         """,
                         returnStatus: true
                     )
@@ -180,9 +175,6 @@ pipeline {
                 }
             }
         }
-
-        // --- TOUS LES AUTRES STAGES RESTENT IDENTIQUES ---
-        // (Build Image, Scan Image, Tests Unitaires)
 
         stage('Build Image Docker') {
             steps {
@@ -304,7 +296,6 @@ pipeline {
     } // Fin des stages
 
     post {
-        // ... votre bloc 'post' reste identique ...
         always {
             echo 'Pipeline finished.'
             sh "docker logout ${env.DOCKER_REGISTRY} || true"
