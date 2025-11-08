@@ -685,53 +685,152 @@ PULL_POLICY=${env.IMAGE_PULL_POLICY}
             }
         }
 
+        // BONUS: Configuration ZAP personnalisée
         stage('Préparation DAST') {
             steps {
-                echo '📥 Pre-downloading ZAP image...'
+                echo '📝 Creating ZAP configuration...'
                 script {
-                    sh 'docker pull ghcr.io/zaproxy/zaproxy:stable || echo "⚠️  Image pull failed, will pull during scan"'
+                    // Créer un fichier de hooks personnalisé pour ZAP
+                    writeFile file: 'zap-hooks.py', text: '''
+def zap_started(zap, target):
+    """Called when ZAP starts"""
+    print(f"ZAP scan starting for target: {target}")
+    # Vous pouvez ajouter des configurations personnalisées ici
+    
+def zap_pre_shutdown(zap):
+    """Called before ZAP shuts down"""
+    print("ZAP scan completed")
+'''
+                    
+                    echo '✅ ZAP configuration ready'
                 }
             }
         }
 
-        stage('Tests de Sécurité Dynamiques (DAST)') {
+        // VERSION ULTRA-OPTIMISÉE AVEC IMAGE ZAP BARE (8x plus légère)
+        stage('Tests de Sécurité Dynamiques (DAST - Optimisé)') {
             steps {
-                echo '🔐 Running optimized DAST with OWASP ZAP...'
+                echo '🔐 Running lightweight DAST with OWASP ZAP Bare...'
                 script {
-                    // Vérifier que l'application est accessible
-                    sh """
-                        echo "🔍 Testing application accessibility before DAST..."
-                        curl -s -o /dev/null -w "HTTP Status: %{http_code}\\n" --connect-timeout 10 ${env.DAST_APP_URL}/ || echo "⚠️  Application might not be accessible"
-                    """
-                    
-                    // Scan optimisé avec timeout
-                    timeout(time: 8, unit: 'MINUTES') {
-                        try {
-                            sh """
-                                docker run --rm \
-                                    -v \$(pwd):/zap/wrk:rw \
-                                    -t ghcr.io/zaproxy/zaproxy:stable \
-                                    zap-baseline.py \
-                                    -t ${env.DAST_APP_URL} \
-                                    -r zap_report.html \
-                                    -J zap_report.json \
-                                    -w zap_report.md \
-                                    -m 3 \
-                                    -I
-                            """
-                            echo '✅ DAST scan completed successfully'
-                        } catch (Exception e) {
-                            echo '⚠️  DAST scan found issues or timed out, but continuing pipeline...'
-                            currentBuild.result = 'UNSTABLE'
+                    try {
+                        // Configuration du port-forward pour garantir l'accès
+                        echo '🔌 Setting up port-forward for reliable access...'
+                        sh """
+                            # Nettoyer les anciens port-forwards
+                            pkill -f "kubectl port-forward" || true
+                            sleep 2
+                            
+                            # Créer le port-forward
+                            kubectl port-forward -n ${env.DAST_NAMESPACE} \
+                                svc/${env.DAST_APP_NAME} 8888:${env.DAST_SERVICE_PORT} \
+                                > /tmp/port-forward-${BUILD_NUMBER}.log 2>&1 &
+                            
+                            echo \$! > /tmp/port-forward-${BUILD_NUMBER}.pid
+                            
+                            # Attendre que le port-forward soit établi
+                            echo "⏳ Waiting for port-forward to be ready..."
+                            sleep 5
+                            
+                            # Vérifier la connectivité
+                            for i in {1..10}; do
+                                if curl -s -o /dev/null -w "%{http_code}" http://localhost:8888/ | grep -q "200\\|301\\|302\\|404"; then
+                                    echo "✅ Port-forward is working!"
+                                    break
+                                fi
+                                echo "Attempt \$i/10 - Waiting for port-forward..."
+                                sleep 2
+                            done
+                        """
+                        
+                        def targetURL = "http://localhost:8888"
+                        echo "🎯 DAST Target: ${targetURL}"
+                        
+                        // Pre-télécharger l'image bare (beaucoup plus légère: ~200MB vs 1.5GB)
+                        echo '📥 Pulling ZAP Bare image (lightweight)...'
+                        sh 'docker pull ghcr.io/zaproxy/zaproxy:bare || echo "⚠️  Using cached image"'
+                        
+                        // Scan DAST optimisé
+                        echo '🕷️  Starting optimized ZAP scan...'
+                        timeout(time: 8, unit: 'MINUTES') {
+                            def zapResult = sh(
+                                script: """
+                                    docker run --rm \
+                                        --network host \
+                                        -v \$(pwd):/zap/wrk:rw \
+                                        -u zap \
+                                        ghcr.io/zaproxy/zaproxy:bare \
+                                        zap-baseline.py \
+                                        -t ${targetURL} \
+                                        -r zap_report.html \
+                                        -J zap_report.json \
+                                        -w zap_report.md \
+                                        -m 3 \
+                                        -d \
+                                        -I \
+                                        -l INFO \
+                                        --hook=/zap/wrk/zap-hooks.py 2>&1 | tee zap_scan.log
+                                """,
+                                returnStatus: true
+                            )
+                            
+                            // Analyser le résultat
+                            echo "ZAP scan exit code: ${zapResult}"
+                            
+                            // Vérifier si le scan a pu démarrer
+                            def scanLog = sh(
+                                script: 'cat zap_scan.log 2>/dev/null || echo "No log"',
+                                returnStdout: true
+                            )
+                            
+                            if (scanLog.contains("FAIL-NEW") || scanLog.contains("FAIL-INPROG")) {
+                                echo '⚠️  DAST found potential security issues'
+                                currentBuild.result = 'UNSTABLE'
+                            } else if (scanLog.contains("PASS:")) {
+                                echo '✅ DAST scan completed successfully'
+                            } else if (zapResult != 0) {
+                                echo '⚠️  DAST scan completed with warnings'
+                                currentBuild.result = 'UNSTABLE'
+                            }
                         }
+                        
+                        // Vérifier les rapports générés
+                        sh """
+                            echo "📊 Generated reports:"
+                            ls -lh zap_report.* 2>/dev/null || echo "⚠️  No reports generated"
+                        """
+                        
+                    } catch (Exception e) {
+                        echo "⚠️  DAST error: ${e.message}"
+                        echo "Checking logs for details..."
+                        sh 'cat /tmp/port-forward-${BUILD_NUMBER}.log 2>/dev/null || echo "No port-forward logs"'
+                        sh 'cat zap_scan.log 2>/dev/null | tail -50 || echo "No ZAP logs"'
+                        currentBuild.result = 'UNSTABLE'
+                    } finally {
+                        // Nettoyer le port-forward
+                        echo '🧹 Cleaning up port-forward...'
+                        sh """
+                            if [ -f /tmp/port-forward-${BUILD_NUMBER}.pid ]; then
+                                kill \$(cat /tmp/port-forward-${BUILD_NUMBER}.pid) 2>/dev/null || true
+                                rm -f /tmp/port-forward-${BUILD_NUMBER}.pid
+                            fi
+                            pkill -f "kubectl port-forward.*8888" || true
+                            rm -f /tmp/port-forward-${BUILD_NUMBER}.log
+                        """
                     }
                 }
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'zap_report.*', allowEmptyArchive: true
-                    // Nettoyer les conteneurs Docker arrêtés
-                    sh 'docker system prune -f || true'
+                    script {
+                        // Archiver tous les artefacts disponibles
+                        sh """
+                            echo "=== Available DAST artifacts ==="
+                            ls -lh zap_* 2>/dev/null || echo "No ZAP files found"
+                        """
+                        
+                        archiveArtifacts artifacts: 'zap_report.*', allowEmptyArchive: true
+                        archiveArtifacts artifacts: 'zap_scan.log', allowEmptyArchive: true
+                    }
                 }
             }
         }
