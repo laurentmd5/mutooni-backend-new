@@ -698,16 +698,16 @@ def zap_pre_shutdown(zap):
                     
                     echo '✅ ZAP configuration ready'
                     
-                    // Pre-télécharger l'image ZAP Bare (légère: ~200MB)
-                    echo '📥 Pre-downloading ZAP Bare image (lightweight)...'
-                    sh 'docker pull ghcr.io/zaproxy/zaproxy:bare || echo "⚠️  Image pull failed, will pull during scan"'
+                    // Pre-télécharger l'image ZAP Stable (contient zap-baseline.py)
+                    echo '📥 Pre-downloading ZAP Stable image...'
+                    sh 'docker pull ghcr.io/zaproxy/zaproxy:stable || echo "⚠️  Image pull failed, will pull during scan"'
                 }
             }
         }
 
         stage('Tests de Sécurité Dynamiques (DAST - Optimisé)') {
             steps {
-                echo '🔐 Running lightweight DAST with OWASP ZAP Bare...'
+                echo '🔐 Running DAST with OWASP ZAP via port-forward...'
                 script {
                     try {
                         // Configuration du port-forward pour garantir l'accès
@@ -742,16 +742,15 @@ def zap_pre_shutdown(zap):
                         def targetURL = "http://localhost:8888"
                         echo "🎯 DAST Target: ${targetURL}"
                         
-                        // Scan DAST optimisé
-                        echo '🕷️  Starting optimized ZAP scan...'
+                        // Scan DAST avec l'image stable qui contient zap-baseline.py
+                        echo '🕷️  Starting ZAP baseline scan...'
                         timeout(time: 8, unit: 'MINUTES') {
                             def zapResult = sh(
                                 script: """
                                     docker run --rm \
                                         --network host \
                                         -v \$(pwd):/zap/wrk:rw \
-                                        -u zap \
-                                        ghcr.io/zaproxy/zaproxy:bare \
+                                        ghcr.io/zaproxy/zaproxy:stable \
                                         zap-baseline.py \
                                         -t ${targetURL} \
                                         -r zap_report.html \
