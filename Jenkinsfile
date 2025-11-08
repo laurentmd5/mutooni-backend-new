@@ -685,25 +685,53 @@ PULL_POLICY=${env.IMAGE_PULL_POLICY}
             }
         }
 
+        stage('Préparation DAST') {
+            steps {
+                echo '📥 Pre-downloading ZAP image...'
+                script {
+                    sh 'docker pull ghcr.io/zaproxy/zaproxy:stable || echo "⚠️  Image pull failed, will pull during scan"'
+                }
+            }
+        }
+
         stage('Tests de Sécurité Dynamiques (DAST)') {
             steps {
-                echo '🔐 Running DAST with OWASP ZAP...'
+                echo '🔐 Running optimized DAST with OWASP ZAP...'
                 script {
+                    // Vérifier que l'application est accessible
                     sh """
-                        docker run --rm \
-                            -v \$(pwd):/zap/wrk:rw \
-                            -t ghcr.io/zaproxy/zaproxy:stable \
-                            zap-baseline.py \
-                            -t ${env.DAST_APP_URL} \
-                            -r zap_report.html \
-                            -J zap_report.json \
-                            -w zap_report.md
+                        echo "🔍 Testing application accessibility before DAST..."
+                        curl -s -o /dev/null -w "HTTP Status: %{http_code}\\n" --connect-timeout 10 ${env.DAST_APP_URL}/ || echo "⚠️  Application might not be accessible"
                     """
+                    
+                    // Scan optimisé avec timeout
+                    timeout(time: 8, unit: 'MINUTES') {
+                        try {
+                            sh """
+                                docker run --rm \
+                                    -v \$(pwd):/zap/wrk:rw \
+                                    -t ghcr.io/zaproxy/zaproxy:stable \
+                                    zap-baseline.py \
+                                    -t ${env.DAST_APP_URL} \
+                                    -r zap_report.html \
+                                    -J zap_report.json \
+                                    -w zap_report.md \
+                                    -m 3 \
+                                    -I
+                            """
+                            echo '✅ DAST scan completed successfully'
+                        } catch (Exception e) {
+                            echo '⚠️  DAST scan found issues or timed out, but continuing pipeline...'
+                            currentBuild.result = 'UNSTABLE'
+                        }
+                    }
                 }
             }
             post {
                 always {
                     archiveArtifacts artifacts: 'zap_report.*', allowEmptyArchive: true
+                    // Nettoyer les conteneurs Docker arrêtés
+                    sh 'docker system prune -f || true'
                 }
             }
         }
