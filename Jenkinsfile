@@ -684,6 +684,29 @@ PULL_POLICY=${env.IMAGE_PULL_POLICY}
                 }
             }
         }
+
+        stage('Tests de Sécurité Dynamiques (DAST)') {
+            steps {
+                echo '🔐 Running DAST with OWASP ZAP...'
+                script {
+                    sh """
+                        docker run --rm \
+                            -v \$(pwd):/zap/wrk:rw \
+                            -t ghcr.io/zaproxy/zaproxy:stable \
+                            zap-baseline.py \
+                            -t ${env.DAST_APP_URL} \
+                            -r zap_report.html \
+                            -J zap_report.json \
+                            -w zap_report.md
+                    """
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'zap_report.*', allowEmptyArchive: true
+                }
+            }
+        }
     }
 
     post {
