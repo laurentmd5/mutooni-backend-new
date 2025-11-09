@@ -742,11 +742,10 @@ ${sh(script: "kubectl get all -n ${env.K8S_NAMESPACE}", returnStdout: true)}
                     
                     // Nettoyage images anciennes (garde les 5 dernières)
                     sh """
-                        docker images ${env.DOCKER_REGISTRY}/${env.IMAGE_NAME} \
-                            --format '{{.Tag}}' | \
-                            grep -E '^[0-9]+\ | \
-                            sort -rn | \
-                            tail -n +6 | \
+                        docker images ${env.DOCKER_REGISTRY}/${env.IMAGE_NAME} --format '{{.Tag}}' | \\
+                            grep -E '^[0-9]+' | \\
+                            sort -rn | \\
+                            tail -n +6 | \\
                             xargs -I {} docker rmi ${env.DOCKER_REGISTRY}/${env.IMAGE_NAME}:{} 2>/dev/null || true
                     """
                     
