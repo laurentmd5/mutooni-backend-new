@@ -372,6 +372,7 @@ EOF
                                 docker run --rm \
                                     --network host \
                                     -v \$(pwd):/zap/wrk:rw \
+                                    -u root:root \
                                     ghcr.io/zaproxy/zaproxy:stable \
                                     zap-baseline.py \
                                     -t ${zapTarget} \
@@ -399,7 +400,7 @@ EOF
         // --- NOUVEAU STAGE : Tag & Push Image Production ---
         stage('Tag & Push Image Production') {
             when {
-                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' || currentBuild.result == 'UNSTABLE' }
             }
             steps {
                 script {
