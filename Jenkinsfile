@@ -880,7 +880,7 @@ Le déploiement a réussi MAIS des problèmes de qualité/sécurité ont été t
 4. Surveillez l'application en production
 
 🌐 Application Déployée:
-   URL: http://$(minikube ip 2>/dev/null || echo 'MINIKUBE_IP'):30080
+   URL: http://\$(minikube ip 2>/dev/null || echo 'MINIKUBE_IP'):30080
    Status: Fonctionnelle avec avertissements de sécurité
 
 ════════════════════════════════════════════════════════════════════
