@@ -18,7 +18,7 @@ pipeline {
         DAST_APP_NAME = "django-app-dast"
         DAST_DB_NAME = "postgres-dast"
         DAST_SERVICE_PORT = "8000"
-        DAST_NODE_PORT = "30080"
+        DAST_NODE_PORT = "30082"  
         DAST_TIMEOUT = "180"
         IMAGE_PULL_POLICY = "IfNotPresent"
         
@@ -372,7 +372,6 @@ EOF
                                 docker run --rm \
                                     --network host \
                                     -v \$(pwd):/zap/wrk:rw \
-                                    -u root:root \
                                     ghcr.io/zaproxy/zaproxy:stable \
                                     zap-baseline.py \
                                     -t ${zapTarget} \
@@ -400,7 +399,7 @@ EOF
         // --- NOUVEAU STAGE : Tag & Push Image Production ---
         stage('Tag & Push Image Production') {
             when {
-                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' || currentBuild.result == 'UNSTABLE' }
+                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
             }
             steps {
                 script {
@@ -743,10 +742,11 @@ ${sh(script: "kubectl get all -n ${env.K8S_NAMESPACE}", returnStdout: true)}
                     
                     // Nettoyage images anciennes (garde les 5 dernières)
                     sh """
-                        docker images ${env.DOCKER_REGISTRY}/${env.IMAGE_NAME} --format '{{.Tag}}' | \\
-                            grep -E '^[0-9]+' | \\
-                            sort -rn | \\
-                            tail -n +6 | \\
+                        docker images ${env.DOCKER_REGISTRY}/${env.IMAGE_NAME} \
+                            --format '{{.Tag}}' | \
+                            grep -E '^[0-9]+\ | \
+                            sort -rn | \
+                            tail -n +6 | \
                             xargs -I {} docker rmi ${env.DOCKER_REGISTRY}/${env.IMAGE_NAME}:{} 2>/dev/null || true
                     """
                     
@@ -880,7 +880,7 @@ Le déploiement a réussi MAIS des problèmes de qualité/sécurité ont été t
 4. Surveillez l'application en production
 
 🌐 Application Déployée:
-   URL: http://\$(minikube ip 2>/dev/null || echo 'MINIKUBE_IP'):30080
+   URL: http://$(minikube ip 2>/dev/null || echo 'MINIKUBE_IP'):30080
    Status: Fonctionnelle avec avertissements de sécurité
 
 ════════════════════════════════════════════════════════════════════
